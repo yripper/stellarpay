@@ -1,7 +1,8 @@
 import { Mppx, Store } from "mppx/server";
 import { close, getChannelState, stellar, watchChannel } from "@stellar/mpp/channel/server";
+import { USDC_SAC_TESTNET } from "@stellar/mpp";
 import { StrKey } from "@stellar/stellar-sdk";
-import { dollarToDecimal } from "@stellarpay/shared";
+import { dollarToDecimal, NETWORKS } from "@stellarpay/shared";
 import type { Receipt, RouteRule, SchemeModule, SchemeOutcome, StellarpayConfig } from "../types.js";
 
 /** Re-exported for ops tooling (settlement scripts, dispute monitors) — see `@stellar/mpp/channel/server`. */
@@ -27,6 +28,11 @@ function amountFor(rule: RouteRule): { amount: string; asset: string } {
  * Single-process deployments are the supported v0.1 topology; a pluggable store (e.g.
  * Redis-backed, satisfying mppx's `Store.AtomicStore` contract) is on the roadmap for
  * multi-instance deployments.
+ *
+ * On-chain currency verification is pinned to `USDC_SAC_TESTNET` (same known v0.1
+ * simplification as the mpp-charge module); pubnet channel deployments settling in
+ * mainnet USDC must wait for a mainnet-preset roadmap item before this can verify
+ * their token correctly.
  */
 export function createMppChannelModule(cfg: StellarpayConfig): SchemeModule {
   const commitmentKey = StrKey.encodeEd25519PublicKey(Buffer.from(cfg.channel!.commitmentPublicKey, "hex"));
@@ -38,6 +44,10 @@ export function createMppChannelModule(cfg: StellarpayConfig): SchemeModule {
         channel: cfg.channel!.contract,
         commitmentKey,
         store: Store.memory(),
+        network: cfg.network,
+        rpcUrl: cfg.rpcUrl ?? NETWORKS[cfg.network].rpcUrl,
+        recipient: cfg.payTo,
+        currency: USDC_SAC_TESTNET, // explicit-asset routes override per call via amountFor
       }),
     ],
   });
