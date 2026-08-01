@@ -120,7 +120,16 @@ export function toolPayments(config: ToolPaymentsConfig): ToolPayments {
         // the transport's own `getCredential(extra)` (`Transport.js:42-47`).
         const result = await payment.charge({ amount, description: `MCP tool: ${toolName}` })(extra as McpToolExtra);
         if (result.status === 402) throw result.challenge; // McpError, code -32042 (Mcp.d.ts:7)
-        config.onPayment?.({ tool: toolName, amount, timestamp: new Date().toISOString() });
+        try {
+          config.onPayment?.({ tool: toolName, amount, timestamp: new Date().toISOString() });
+        } catch (hookError) {
+          // A misbehaving user hook must never turn an already-paid call into a hard
+          // error for the caller — the charge already settled, so the client should
+          // still get its tool result. Mirrors @stellarpay/core's identical isolation
+          // for its own `onPayment` hook (packages/core/src/stellarpay.ts:96-101).
+          // Logged server-side only, matching that precedent's own comment.
+          console.error("[stellarpay/mcp] onPayment hook threw; ignoring", hookError);
+        }
         const response = await handler(args, extra);
         // `withReceipt` is narrowed by the mcp-sdk transport to `CallToolResult`
         // (`McpToolResult`), while `guard`'s own contract keeps `R` fully generic per the

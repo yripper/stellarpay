@@ -23,6 +23,9 @@ not a new payment protocol.
 - `src/index.ts` — re-exports both modules (`export * from "./server.js"` /
   `"./client.js"`, `index.ts:1-2`).
 - `test/mcp.test.ts` — the brief's Step 2 tests verbatim.
+- `test/onPaymentIsolation.test.ts` — a post-review addition (see Gotchas) proving a
+  throwing `onPayment` hook doesn't turn an already-paid tool call into a hard error;
+  stubs the `mppx/server` module boundary to reach the `status: 200` path offline.
 
 ## Public Surface
 
@@ -34,7 +37,7 @@ not a new payment protocol.
   `onPayment?`.
 - `type ToolPayments` (`server.ts:60-71`) — `guard<A, R>(toolName, handler): (args: A,
   extra: unknown) => Promise<R>` and `priceOf(toolName): string | undefined`.
-- `function toolPayments(config: ToolPaymentsConfig): ToolPayments` (`server.ts:88-135`)
+- `function toolPayments(config: ToolPaymentsConfig): ToolPayments` (`server.ts:88-144`)
   — the package's server-side entry point.
 - `type PaidMcpClientOptions` (`client.ts:7-23`) — `secret`, `network:
   "stellar:testnet" | "stellar:pubnet"` (see Gotchas — currently unused for wiring),
@@ -59,11 +62,11 @@ their internal type plumbing.
 
 ## Key Methods (`file:line`)
 
-- `toolPayments(config)` (`server.ts:88-135`) — builds one `Mppx.create({ secretKey:
+- `toolPayments(config)` (`server.ts:88-144`) — builds one `Mppx.create({ secretKey:
   config.mppSecretKey, transport: Transport.mcpSdk(), methods: [stellar.charge({...})]
   })` instance (`server.ts:89-108`) per call, then returns `priceOf` (`server.ts:111`)
-  and `guard` (`server.ts:112-133`).
-- `guard(toolName, handler)` (`server.ts:112-133`):
+  and `guard` (`server.ts:112-142`).
+- `guard(toolName, handler)` (`server.ts:112-142`):
   1. Looks up `config.prices[toolName]`; if unset, **returns `handler` unwrapped**
      (`server.ts:114`) — an unpriced tool never touches mppx at all, not merely "always
      succeeds."
@@ -75,10 +78,11 @@ their internal type plumbing.
      - On `result.status === 402`, `throw result.challenge` (`server.ts:122`) — this is
        already a live `McpError` instance (code `-32042`), not a plain object; see
        Upstream-API evidence.
-     - On success, calls `config.onPayment?.(...)` (`server.ts:123`), runs the wrapped
-       `handler` (`server.ts:124`), then `return result.withReceipt(response as unknown
-       as McpToolResult) as unknown as R` (`server.ts:131`) — see Upstream-API evidence
-       for why the double cast is necessary.
+     - On success, calls `config.onPayment?.(...)` inside its own `try/catch`
+       (`server.ts:123-132` — see Gotchas), runs the wrapped `handler`
+       (`server.ts:133`), then `return result.withReceipt(response as unknown as
+       McpToolResult) as unknown as R` (`server.ts:140`) — see Upstream-API evidence for
+       why the double cast is necessary.
 - `wrapPaidMcpClient(client, opts)` (`client.ts:36-43`) — `McpClient.wrap(client, {
   methods: [stellarChargeClient({ secretKey: opts.secret, mode: "pull", rpcUrl:
   opts.rpcUrl })] })` (`client.ts:40-42`); `client` is constrained to `Pick<Client,
@@ -134,8 +138,40 @@ their internal type plumbing.
   [receiptMetaKey]: mcpReceipt }` — `receiptMetaKey = "org.paymentauth/receipt"`
   (`Mcp.js:8`). A `Response` instance (not a plain object) is special-cased to `{ content:
   [] }` first, which doesn't apply here since `handler`'s result is always a plain object.
+- **A throwing `config.onPayment` hook is isolated from the paid tool call — it cannot
+  turn an already-settled charge into a hard error for the caller.** `guard` wraps the
+  `config.onPayment?.(...)` call in its own `try/catch` (`server.ts:123-132`), logging via
+  `console.error("[stellarpay/mcp] onPayment hook threw; ignoring", hookError)` and
+  swallowing the error rather than letting it propagate — the charge has already been
+  accepted by `payment.charge(...)` at that point, so a metrics/DB write failure inside
+  the hook must not deny the client its paid-for tool result. Mirrors
+  `@stellarpay/core`'s identical isolation for its own `onPayment` hook
+  (`packages/core/src/stellarpay.ts:96-101`, same swallow-and-log pattern). Proven by
+  `test/onPaymentIsolation.test.ts`, which stubs the `mppx/server` module boundary (real
+  `mppx` engine can't reach `status: 200` offline — see Testing) to drive a throwing
+  `onPayment` through the guard and assert the handler's result still resolves.
+- **`ToolPaymentReceipt.raw` is currently never populated.** The receipt object passed to
+  `config.onPayment` is built directly in `guard` as `{ tool: toolName, amount,
+  timestamp: new Date().toISOString() }` (`server.ts:124`) — `raw` is never set, because
+  the actual settlement receipt (which may carry a raw reference such as a tx hash) only
+  materializes later, inside `result.withReceipt(...)`'s own receipt object
+  (`respondReceipt`, `Transport.js:66-81`), after `onPayment` has already fired. `raw?:
+  string` remains on the type for produced-interface parity and as a placeholder for a
+  future revision that reorders the call or threads the settlement receipt back into
+  `onPayment`'s payload — not functional today.
+- **`Store.memory()` (`server.ts:104`) is single-process, in-memory replay protection —
+  restated here, not just cross-referenced, since a reader of this doc alone must see
+  it.** It is a plain in-process `Map`: state is lost on restart (a spent challenge could
+  be re-verified after a redeploy or crash) and is not shared across processes or
+  instances, so in a horizontally-scaled or serverless deployment a credential spent
+  against one instance can still replay against a sibling. Identical to
+  `@stellarpay/core`'s `createMppChargeModule` caveat
+  (`packages/core/src/schemes/mppCharge.ts`'s own doc comment) — single-process
+  deployments are the supported v0.1 topology for `toolPayments` too; a pluggable
+  `Store.AtomicStore` (e.g. Redis-backed) is on the roadmap for multi-instance
+  deployments, not implemented here.
 - **The generic `guard<A, R>`'s `R` is bridged into mppx's concrete `McpToolResult`
-  (`CallToolResult`) with an explicit double cast (`server.ts:131`), not a generic
+  (`CallToolResult`) with an explicit double cast (`server.ts:140`), not a generic
   constraint.** The brief's produced interface specifies `guard<A, R>` with `R` fully
   free; but `Transport.WithReceipt<Transport.McpSdk>` narrows its parameter to
   `CallToolResult` (`mppx/dist/server/Transport.d.ts:71`'s `WithReceipt` alias, resolving
@@ -190,17 +226,25 @@ their internal type plumbing.
   through to the real handler; `priceOf` reports configured/unconfigured prices. Fully
   offline — `Mppx.create`'s `stellar.charge` method never makes a network call unless a
   credential is actually verified, and these tests never supply one.
+- `test/onPaymentIsolation.test.ts` — a post-review addition (see Gotchas). Stubs
+  `mppx/server`'s `Mppx.create` at the module boundary (`vi.mock`, mirroring
+  `@stellarpay/core`'s `test/stellarpayErrorBoundary.test.ts`) to force a `status: 200`
+  response — unreachable offline against the real engine, which requires a genuinely
+  signed credential verified via Soroban RPC — then asserts a throwing `onPayment` hook
+  still lets the guarded call resolve with the handler's own result.
 - Run: `pnpm --filter @stellarpay/mcp test` (or `pnpm test` from repo root).
 
 ## Verified Against
 
 - Source read and line numbers confirmed 2026-08-01 against the current working tree
-  (`packages/mcp/src/*.ts`, `packages/mcp/test/mcp.test.ts`).
+  (`packages/mcp/src/*.ts`, `packages/mcp/test/*.ts`), recounted after the
+  `onPayment`-isolation fix round shifted `server.ts` line numbers below the `guard`
+  function's `payment.charge`/`throw` lines.
 - mppx / `@stellar/mpp` / `@modelcontextprotocol/sdk` API shapes verified against
   installed `.d.ts` and, for the challenge/receipt shapes and the `network`-resolution
   gotcha, the compiled `.js` under `packages/mcp/node_modules/` (`mppx@0.6.31`,
   `@stellar/mpp@0.7.1`, `@modelcontextprotocol/sdk@1.30.0`) — not just the `.d.ts`, which
   doesn't show the dynamic-import fallback or the challenge/receipt construction logic.
-- All 3 mcp-package tests pass; `pnpm --filter @stellarpay/mcp typecheck`/`build` both
-  exit 0 with zero diagnostics; root suite (17 files / 75 tests) passes; root
+- All 4 mcp-package tests (2 files) pass; `pnpm --filter @stellarpay/mcp typecheck`/`build`
+  both exit 0 with zero diagnostics; root suite (18 files / 76 tests) passes; root
   `typecheck`/`build` succeed across all 7 packages.
