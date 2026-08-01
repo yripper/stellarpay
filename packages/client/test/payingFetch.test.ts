@@ -41,6 +41,40 @@ describe("createPayingFetch (MPP leg)", () => {
   });
 });
 
+// Review finding (Critical): `channelClient.stellar(...)` is one of the `methods`
+// evaluated *eagerly* inside `Mppx.create()` — so configuring `channelCommitmentSecret`
+// alone, with no `allowedChannels`/`allowUnpinnedChannel`, made every MPP request throw
+// synchronously from `@stellar/mpp`'s own construction-time pinning check ("Channel
+// pinning is required...", `@stellar/mpp/dist/channel/client/Channel.js:40-42`), even for
+// requests that only ever needed the charge method.
+describe("createPayingFetch (mpp-channel client config)", () => {
+  it("channelCommitmentSecret alone does not break MPP leg construction (falls back to unpinned)", async () => {
+    const payFetch = createPayingFetch({
+      keypair: Keypair.random(), network: "stellar:testnet",
+      channelCommitmentSecret: Keypair.random().secret(),
+      _baseFetch: serverFetch, _dryRun: true,
+    } as never);
+    const err = await payFetch("http://svc/paid").catch((e: unknown) => e);
+    // The only error reaching here should be the intentional _dryRun stop — proving
+    // Mppx.create() construction succeeded and the request flow reached the limit gate,
+    // rather than the channel client's own construction-time pinning error.
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toBe("stellarpay: _dryRun stops before credential creation");
+  });
+
+  it("allowedChannels pins the channel client instead of falling back to unpinned", async () => {
+    const payFetch = createPayingFetch({
+      keypair: Keypair.random(), network: "stellar:testnet",
+      channelCommitmentSecret: Keypair.random().secret(),
+      allowedChannels: ["CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA"], // USDC_SAC_TESTNET
+      _baseFetch: serverFetch, _dryRun: true,
+    } as never);
+    const err = await payFetch("http://svc/paid").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toBe("stellarpay: _dryRun stops before credential creation");
+  });
+});
+
 // Carried forward from Task 13's review: `checkAndReserve` reserves budget before a
 // payment attempt is known to succeed. These prove a *failed* attempt on each leg
 // releases that reservation instead of permanently consuming `maxTotal` — otherwise a

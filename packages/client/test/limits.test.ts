@@ -28,4 +28,17 @@ describe("SpendTracker", () => {
     const t = new SpendTracker({}, vi.fn());
     expect(() => t.checkAndReserve(10n ** 12n, "http://x")).not.toThrow();
   });
+  it("release clamps the cumulative total at 0n instead of going negative", () => {
+    // A negative cumulative would silently raise the effective maxTotal ceiling for
+    // every later call — release() must never produce one, even if a caller (e.g. a
+    // challenge-id collision in mppLeg.ts's reservation stack) releases more than was
+    // actually reserved.
+    const t = new SpendTracker({ maxTotal: "$0.01" }, vi.fn()); // 100_000n cap
+    t.checkAndReserve(50_000n, "http://x"); // cumulative = 50_000n
+    t.release(999_999n); // release far more than was ever reserved
+    // If cumulative went negative (e.g. -949_999n), both of the following would pass
+    // trivially — clamped at 0n, the first is right at the cap and the second overflows it.
+    expect(() => t.checkAndReserve(100_000n, "http://x")).not.toThrow(); // 0 + 100_000 == cap
+    expect(() => t.checkAndReserve(1n, "http://x")).toThrow(SpendLimitExceeded); // cap + 1
+  });
 });

@@ -26,6 +26,16 @@ export type PayingFetchConfig = {
   /** Ed25519 secret key (S...) for the mpp-channel client method. Omitted → only the
    * mpp-charge method is registered for MPP challenges (no channel support). */
   channelCommitmentSecret?: string;
+  /**
+   * Channel contract IDs (C...) this client is willing to sign vouchers for, when
+   * `channelCommitmentSecret` is set. Recommended: pinning via `allowedChannels` is
+   * safer than leaving it unset — omitted, the underlying `@stellar/mpp` channel client
+   * falls back to its unpinned opt-in (`allowUnpinnedChannel: true`), which accepts
+   * whatever channel contract the server names rather than one you explicitly trust.
+   * Spend limits still gate the signed amounts either way; pinning additionally guards
+   * against being steered to an unintended channel contract.
+   */
+  allowedChannels?: string[];
 };
 
 /**
@@ -110,6 +120,7 @@ export function createPayingFetch(config: PayingFetchConfig): typeof fetch {
         network: config.network,
         rpcUrl: config.rpcUrl,
         channelCommitmentSecret: config.channelCommitmentSecret,
+        allowedChannels: config.allowedChannels,
         baseFetch,
         tracker,
         emitter,

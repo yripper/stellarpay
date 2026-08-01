@@ -58,10 +58,17 @@ export class SpendTracker {
    * would permanently consume budget it never actually spent, blocking future
    * legitimate calls. A no-op for `undefined`: the unknown-amount-allowed path in
    * `checkAndReserve` never reserves anything, so there is nothing to release.
+   *
+   * Clamped at `0n`: callers are expected to release at most what they reserved, but a
+   * caller that (due to a bug, or an mppx challenge-id collision — see `mppLeg.ts`'s
+   * reservation stack) releases more than the tracker actually holds must never be able
+   * to push `cumulativeBaseUnits` negative, which would silently raise the effective
+   * `maxTotal` ceiling for every subsequent call.
    */
   release(baseUnits: bigint | undefined): void {
     if (baseUnits === undefined) return;
-    this.cumulativeBaseUnits -= baseUnits;
+    const next = this.cumulativeBaseUnits - baseUnits;
+    this.cumulativeBaseUnits = next < 0n ? 0n : next;
   }
 
   private block(reason: "per-call-limit" | "total-limit" | "unparseable-amount", url: string): never {

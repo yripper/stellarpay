@@ -15,6 +15,9 @@ export type MppLegConfig = {
   rpcUrl?: string;
   /** Enables the `mpp-channel` client method; omitted → only `mpp-charge` is registered. */
   channelCommitmentSecret?: string;
+  /** Channel contract IDs (C...) to pin the channel client to; see
+   * `PayingFetchConfig.allowedChannels`'s doc comment for the pinned-vs-unpinned trade-off. */
+  allowedChannels?: string[];
   /** Transport to probe/pay through — the `_baseFetch` seam, or raw `fetch`. */
   baseFetch: typeof fetch;
   /** Shared with the x402 leg so `maxTotal` is enforced across both protocols. */
@@ -31,10 +34,6 @@ export type MppLegConfig = {
    */
   dryRun?: boolean;
 };
-
-/** Bookkeeping kept per in-flight challenge, keyed by `challenge.id` so overlapping
- * requests on the same leg don't clobber each other's URL/reservation. */
-type PendingChallenge = { url: string; amount: bigint | undefined };
 
 /**
  * Extracts the challenged amount from an mppx `Challenge`, for `SpendTracker`.
@@ -76,7 +75,31 @@ function extractChallengeAmount(challenge: Challenge.Challenge): bigint | undefi
  */
 export function createMppLeg(config: MppLegConfig): Mppx.Mppx<Mppx.Methods, Transport.Transport<RequestInit, Response>> {
   const keypair = Keypair.fromSecret(config.secret);
-  const pending = new Map<string, PendingChallenge>();
+
+  /**
+   * Reserved amounts per challenge id, as a stack: `onChallenge` pushes on a successful
+   * `checkAndReserve` (the reservation landing), and each terminal event
+   * (`onCredentialCreated` / `onPaymentFailed`) pops exactly one entry.
+   *
+   * A stack — not a single shared value — because `challenge.id` is not guaranteed
+   * unique across two in-flight requests: it's an HMAC over the challenge's content
+   * *including* a millisecond-precision `expires`, so two requests issued within the
+   * same millisecond for the same route/amount can legitimately collide. Under a
+   * collision, popping one of possibly-several entries is still best-effort (it may
+   * attribute a release to the "wrong" one of the colliding requests), but it can never
+   * silently drop a reservation the way a single mutable per-id slot would — a slot that
+   * a second colliding request would overwrite, permanently losing the first request's
+   * ability to ever release its own reservation.
+   */
+  const reservations = new Map<string, (bigint | undefined)[]>();
+
+  /** Pops one reservation for `id`, cleaning up the map entry once its stack empties. */
+  function popReservation(id: string): bigint | undefined {
+    const stack = reservations.get(id);
+    const amount = stack?.pop();
+    if (stack && stack.length === 0) reservations.delete(id);
+    return amount;
+  }
 
   const mppxClient = Mppx.create({
     polyfill: false,
@@ -89,16 +112,29 @@ export function createMppLeg(config: MppLegConfig): Mppx.Mppx<Mppx.Methods, Tran
               commitmentSecret: config.channelCommitmentSecret,
               network: config.network,
               rpcUrl: config.rpcUrl,
+              // The channel client's constructor throws synchronously ("Channel pinning
+              // is required...") unless one of these is set — and `methods` is evaluated
+              // eagerly right here, at Mppx.create() call time, regardless of which
+              // challenge type is actually returned. Pin when the caller supplied
+              // allowedChannels; otherwise fall back to the documented unpinned opt-in
+              // rather than let construction fail outright.
+              ...(config.allowedChannels && config.allowedChannels.length > 0
+                ? { allowedChannels: config.allowedChannels }
+                : { allowUnpinnedChannel: true }),
             }),
           ]
         : []),
     ],
     async onChallenge(challenge, helpers) {
-      const entry = pending.get(challenge.id);
-      const url = entry?.url ?? challenge.realm;
+      // No cross-event URL correlation here (unlike amount reservations, a wrong
+      // diagnostic URL under a challenge-id collision is cosmetic, not a correctness
+      // bug) — `challenge.realm` is the only URL-ish data onChallenge itself receives.
+      const url = challenge.realm;
       const amount = extractChallengeAmount(challenge);
       config.tracker.checkAndReserve(amount, url); // throws SpendLimitExceeded; nothing reserved on throw
-      if (entry) entry.amount = amount; // only reached once the reservation actually landed
+      const stack = reservations.get(challenge.id) ?? [];
+      stack.push(amount); // only reached once the reservation actually landed
+      reservations.set(challenge.id, stack);
       config.emitter.emit({ type: "paying", protocol: "mpp", url });
       if (config.dryRun) throw new Error("stellarpay: _dryRun stops before credential creation");
       return helpers.createCredential();
@@ -107,7 +143,6 @@ export function createMppLeg(config: MppLegConfig): Mppx.Mppx<Mppx.Methods, Tran
 
   mppxClient.onChallengeReceived(({ challenge, input }) => {
     const url = input !== undefined ? toUrlString(input) : challenge.realm;
-    pending.set(challenge.id, { url, amount: undefined });
     config.emitter.emit({ type: "challenge", protocol: "mpp", url });
     // This handler only observes — a non-empty string return would be adopted as the
     // credential, skipping onChallenge (and its limit gate) entirely.
@@ -115,17 +150,14 @@ export function createMppLeg(config: MppLegConfig): Mppx.Mppx<Mppx.Methods, Tran
   });
 
   mppxClient.onCredentialCreated(({ challenge, input }) => {
-    const entry = pending.get(challenge.id);
-    pending.delete(challenge.id); // success: the reservation stands — nothing left to release
-    const url = entry?.url ?? (input !== undefined ? toUrlString(input) : challenge.realm);
+    popReservation(challenge.id); // success: the reservation stands — nothing to release
+    const url = input !== undefined ? toUrlString(input) : challenge.realm;
     config.emitter.emit({ type: "paid", protocol: "mpp", url });
   });
 
   mppxClient.onPaymentFailed(({ challenge, input, error }) => {
-    const entry = challenge ? pending.get(challenge.id) : undefined;
-    if (challenge) pending.delete(challenge.id);
-    if (entry) config.tracker.release(entry.amount);
-    const url = entry?.url ?? (input !== undefined ? toUrlString(input) : (challenge?.realm ?? "unknown"));
+    if (challenge) config.tracker.release(popReservation(challenge.id));
+    const url = input !== undefined ? toUrlString(input) : (challenge?.realm ?? "unknown");
     config.emitter.emit({ type: "error", message: error instanceof Error ? error.message : String(error), url });
   });
 
