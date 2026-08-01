@@ -22,7 +22,7 @@
  * DO NOT run this against secrets you don't control: `SMOKE_BUYER_SECRET` signs and
  * broadcasts real testnet transactions, and (if set) `SMOKE_SPONSOR_SECRET` pays their fees.
  */
-import { serve } from "@hono/node-server";
+import { serve, type ServerType } from "@hono/node-server";
 import { Hono } from "hono";
 import { USDC_SAC_TESTNET } from "@stellar/mpp";
 import { stellarpayHono } from "@stellarpay/hono";
@@ -30,25 +30,39 @@ import { createPayingFetch, type PayEvent } from "@stellarpay/client";
 import type { Receipt, StellarpayConfig } from "@stellarpay/core";
 import { NETWORKS } from "@stellarpay/shared";
 
-const NETWORK = "stellar:testnet" as const;
-const PORT = 4402;
-const BASE_URL = `http://localhost:${PORT}`;
-// Wired explicitly (not left to library defaults) per this task's brief: the x402 leg's
-// `ExactStellarScheme` and the mpp leg's `stellar.charge` client both need Soroban RPC —
-// see `packages/client/src/x402Leg.ts:12` and `packages/client/src/mppLeg.ts:108`.
-const RPC_URL = NETWORKS[NETWORK].rpcUrl;
-
 // --- env ---------------------------------------------------------------------------------
 
 // Node 22+ built-in `.env` loader — no `dotenv` dependency. Guarded: a missing `.env` is
 // fine (CI/shell-exported env vars still work), anything else would be surprising so it
-// is re-thrown.
+// is re-thrown. Runs before any env var is read below, so a `.env`-provided SMOKE_PORT (or
+// any other var) is visible everywhere.
 try {
   process.loadEnvFile();
 } catch (err) {
   const code = err instanceof Error ? (err as NodeJS.ErrnoException).code : undefined;
   if (code !== "ENOENT") throw err;
 }
+
+const NETWORK = "stellar:testnet" as const;
+const DEFAULT_PORT = 4402;
+
+/** Parses `SMOKE_PORT`; falls back to `DEFAULT_PORT` (with a warning) for anything invalid. */
+function parsePort(raw: string | undefined): number {
+  if (!raw) return DEFAULT_PORT;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+    console.error(`Invalid SMOKE_PORT "${raw}" — must be an integer between 1 and 65535. Falling back to ${DEFAULT_PORT}.`);
+    return DEFAULT_PORT;
+  }
+  return parsed;
+}
+
+const PORT = parsePort(process.env["SMOKE_PORT"]);
+const BASE_URL = `http://localhost:${PORT}`;
+// Wired explicitly (not left to library defaults) per this task's brief: the x402 leg's
+// `ExactStellarScheme` and the mpp leg's `stellar.charge` client both need Soroban RPC —
+// see `packages/client/src/x402Leg.ts:12` and `packages/client/src/mppLeg.ts:108`.
+const RPC_URL = NETWORKS[NETWORK].rpcUrl;
 
 type SmokeEnv = {
   buyerSecret: string;
@@ -160,6 +174,40 @@ async function runLeg(
   }
 }
 
+// --- server lifecycle ------------------------------------------------------------------------------
+
+/**
+ * Starts the smoke server and resolves only once it is actually listening — callers must
+ * not fire requests before this resolves, or they'd race the socket accepting connections
+ * (the earlier version of this script logged "listening" immediately after calling `serve()`,
+ * before the underlying `server.listen()` callback had actually fired).
+ *
+ * A listen failure — most commonly EADDRINUSE from a stale smoke server left running on the
+ * same port from a prior interrupted run — is fatal: printed with an actionable fix and
+ * `process.exit(1)`'d directly here (rather than rejecting the promise), so callers don't
+ * need their own catch/exit boilerplate. `@hono/node-server`'s `serve()` installs no error
+ * listener of its own, so without this an EADDRINUSE would surface as a raw uncaught
+ * 'error' event stack instead.
+ */
+function startServer(app: Hono, port: number): Promise<ServerType> {
+  return new Promise((resolve) => {
+    const server = serve({ fetch: app.fetch, port }, (info) => {
+      console.log(`stellarpay smoke server listening on http://localhost:${info.port} (network: ${NETWORK}, rpcUrl: ${RPC_URL})`);
+      resolve(server);
+    });
+    server.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") {
+        console.error(
+          `\nPort ${port} is already in use — kill the stale smoke server (or whatever else is bound to it), or set SMOKE_PORT to a free port and retry.`,
+        );
+      } else {
+        console.error(`\nstellarpay smoke server failed to start: ${err.message}`);
+      }
+      process.exit(1);
+    });
+  });
+}
+
 // --- main ------------------------------------------------------------------------------
 
 async function main(): Promise<void> {
@@ -192,8 +240,7 @@ async function main(): Promise<void> {
   app.get("/x402", (c) => c.json({ ok: true, route: "x402" }));
   app.get("/mpp", (c) => c.json({ ok: true, route: "mpp" }));
 
-  const server = serve({ fetch: app.fetch, port: PORT });
-  console.log(`stellarpay smoke server listening on ${BASE_URL} (network: ${NETWORK}, rpcUrl: ${RPC_URL})`);
+  const server = await startServer(app, PORT);
 
   const payingFetch = createPayingFetch({
     secret: env.buyerSecret,
