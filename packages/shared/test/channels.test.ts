@@ -10,6 +10,10 @@ describe("submitViaChannels", () => {
     const client = { submitTransaction: vi.fn().mockResolvedValue({ hash: "abc" }) };
     await expect(submitViaChannels({ ...base, _client: client })).resolves.toBe("abc");
   });
+  it("throws on null hash from Channels", async () => {
+    const client = { submitTransaction: vi.fn().mockResolvedValue({ hash: null }) };
+    await expect(submitViaChannels({ ...base, _client: client })).rejects.toThrow("Channels accepted the transaction but returned no hash");
+  });
   it("retries POOL_CAPACITY then succeeds", async () => {
     vi.useFakeTimers();
     try {

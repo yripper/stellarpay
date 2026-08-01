@@ -1,7 +1,7 @@
 import { ChannelsClient, PluginExecutionError } from "@openzeppelin/relayer-plugin-channels";
 import { Transaction, rpc } from "@stellar/stellar-sdk";
 
-type MinimalClient = { submitTransaction(args: { xdr: string }): Promise<{ hash: string }> };
+type MinimalClient = { submitTransaction(args: { xdr: string }): Promise<{ hash: string | null }> };
 
 function code(e: unknown): string | undefined {
   return e instanceof PluginExecutionError ? e.errorDetails?.code : undefined;
@@ -28,7 +28,9 @@ export async function submitViaChannels(opts: {
   const networkPassphrase = opts.networkPassphrase ?? "Test SDF Network ; September 2015";
   for (let attempt = 0; ; attempt++) {
     try {
-      return (await client.submitTransaction({ xdr: opts.signedXdr })).hash;
+      const response = await client.submitTransaction({ xdr: opts.signedXdr });
+      if (!response.hash) throw new Error("Channels accepted the transaction but returned no hash");
+      return response.hash;
     } catch (e) {
       if (code(e) === "POOL_CAPACITY" && attempt < retries) {
         await new Promise((r) => setTimeout(r, 2000));

@@ -25,7 +25,7 @@ Provides reusable types, constants, and utilities for working with Stellar netwo
 
 - `decimalToBaseUnits(decimal: string, decimals?: number): bigint` — Converts a decimal amount (e.g., `"0.01"`) into token base units for the given decimal precision. Defaults to 7 decimals. Throws `InvalidPriceError` if precision exceeds the allowed decimals. (`packages/shared/src/price.ts:15-19`)
 
-- `submitViaChannels(opts: { channelsUrl: string; apiKey: string; signedXdr: string; rpcUrl: string; maxPoolRetries?: number; networkPassphrase?: string; _client?; _directSubmit? }): Promise<string>` — Submits a signed envelope via OpenZeppelin Channels with automatic retry on quota exhaustion and fallback to direct self-pay submission on fee limit errors. Returns the transaction hash. XDR submissions must be built with `.setTimeout(30)`. Supports optional custom network passphrase (defaults to Stellar testnet). (`packages/shared/src/channels.ts:18-35`)
+- `submitViaChannels(opts: { channelsUrl: string; apiKey: string; signedXdr: string; rpcUrl: string; maxPoolRetries?: number; networkPassphrase?: string; _client?; _directSubmit? }): Promise<string>` — Submits a signed envelope via OpenZeppelin Channels with automatic retry on quota exhaustion and fallback to direct self-pay submission on fee limit errors. Returns the transaction hash. Throws if Channels accepts the transaction but returns no hash. XDR submissions must be built with `.setTimeout(30)`. Supports optional custom network passphrase (defaults to Stellar testnet). (`packages/shared/src/channels.ts:22-43`)
 
 ### Errors
 
@@ -36,7 +36,7 @@ Provides reusable types, constants, and utilities for working with Stellar netwo
 - **BigInt arithmetic, no floats**: `decimalToBaseUnits` returns `bigint`, not `number`, to avoid floating-point precision loss in financial calculations. Always use bigint arithmetic downstream.
 - **Dollar validation**: Prices must be positive and in the format `$X.XX` or `$X`; zero is explicitly rejected.
 - **Precision limits**: `decimalToBaseUnits` will throw if the fractional part of the decimal has more digits than the requested decimals parameter.
-- **Channels timeout requirement**: Callers of `submitViaChannels` must build XDR envelopes with `.setTimeout(30)` to ensure compatibility with OZ Channels processing. The function will fall back to direct self-pay submission only on `FEE_LIMIT_EXCEEDED` errors; other errors (e.g., `POOL_CAPACITY` after retries, `SIMULATION_FAILED`) are re-thrown.
+- **Channels timeout requirement**: Callers of `submitViaChannels` must build XDR envelopes with `.setTimeout(30)` to ensure compatibility with OZ Channels processing. The function will fall back to direct self-pay submission only on `FEE_LIMIT_EXCEEDED` errors; other errors (e.g., `POOL_CAPACITY` after retries, `SIMULATION_FAILED`) are re-thrown. If Channels accepts the transaction but returns a null hash, an error is thrown immediately.
 - **Network passphrase**: The optional `networkPassphrase` parameter defaults to Stellar's testnet passphrase. For public-network submissions, explicitly provide `networkPassphrase: "Public Global Stellar Network ; September 2015"`.
 
 ## Verified Against
