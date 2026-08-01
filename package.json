@@ -1,0 +1,20 @@
+{
+  "name": "stellarpay-monorepo",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.15.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "pnpm -r typecheck",
+    "smoke": "tsx scripts/smoke.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.0.0"
+  },
+  "pnpm": { "overrides": { "@stellar/stellar-sdk": "15.1.0" } }
+}
