@@ -24,6 +24,30 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@22.20.1)(tsx@4.23.1)(yaml@2.9.0)
 
+  packages/client:
+    dependencies:
+      '@stellar/mpp':
+        specifier: ^0.7.1
+        version: 0.7.1(@stellar/stellar-sdk@15.1.0)(mppx@0.6.31(hono@4.12.33)(typescript@5.9.3)(viem@2.55.10(typescript@5.9.3)(zod@4.4.3)))
+      '@stellar/stellar-sdk':
+        specifier: 15.1.0
+        version: 15.1.0
+      '@stellarpay/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@x402/core':
+        specifier: ^2.20.0
+        version: 2.20.0
+      '@x402/fetch':
+        specifier: ^2.20.0
+        version: 2.20.0
+      '@x402/stellar':
+        specifier: ^2.20.0
+        version: 2.20.0
+      mppx:
+        specifier: 0.6.31
+        version: 0.6.31(hono@4.12.33)(typescript@5.9.3)(viem@2.55.10(typescript@5.9.3)(zod@4.4.3))
+
   packages/core:
     dependencies:
       '@stellar/mpp':
@@ -574,6 +598,9 @@ packages:
 
   '@x402/core@2.20.0':
     resolution: {integrity: sha512-BaPPVTZ4LAeYKB0yRMOnuzDGoratyLeYobBMH/leFmRe+al94RQnw/uwuw9Rgsupsywz6JQdHzhm4LsE4snuDg==}
+
+  '@x402/fetch@2.20.0':
+    resolution: {integrity: sha512-DmlLLZnBbsl4Qq3Gbg5nTCFLIf5S2ZTBMmz0qSe9Ys7+/FzJCwe36vZ7tNR4Vo5sxRQvlCfGQfWwHsCogOLr7Q==}
 
   '@x402/stellar@2.20.0':
     resolution: {integrity: sha512-67swEAx96rTMoVtEao/GZ7yjbXORxCeAzPeKr8BOx4gt26Qq/TL73T8DS4Zd1bCh+8ISwkyDF3ISlWJelCosYQ==}
@@ -1892,6 +1919,10 @@ snapshots:
   '@x402/core@2.20.0':
     dependencies:
       zod: 3.25.76
+
+  '@x402/fetch@2.20.0':
+    dependencies:
+      '@x402/core': 2.20.0
 
   '@x402/stellar@2.20.0':
     dependencies:

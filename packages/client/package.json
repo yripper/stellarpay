@@ -1,0 +1,30 @@
+{
+  "name": "@stellarpay/client",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@stellar/mpp": "^0.7.1",
+    "@stellar/stellar-sdk": "15.1.0",
+    "@stellarpay/shared": "workspace:*",
+    "@x402/core": "^2.20.0",
+    "@x402/fetch": "^2.20.0",
+    "@x402/stellar": "^2.20.0",
+    "mppx": "0.6.31"
+  }
+}
