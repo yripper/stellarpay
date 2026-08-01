@@ -6,3 +6,4 @@
 | `packages/core` | [core.md](./core.md) |
 | `packages/express` | [express.md](./express.md) |
 | `packages/hono` | [hono.md](./hono.md) |
+| `packages/fastify` | [fastify.md](./fastify.md) |
