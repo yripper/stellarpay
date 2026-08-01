@@ -133,9 +133,9 @@ const paid = withPayments(mcpServer, {
 });
 ```
 
-- HTTP middleware in front of the streamable-HTTP MCP endpoint. Parses JSON-RPC; only `tools/call` on a priced tool triggers a spec-compliant HTTP 402 x402 challenge. `initialize`, `tools/list`, and free tools pass through.
-- `tools/list` responses get price annotations injected (mechanism — `_meta` vs. description suffix — decided at implementation) so agents see costs before calling.
-- Emits the same `Receipt` type via `onPayment`.
+- **Amended 2026-07-31 after upstream API verification:** payments are **in-protocol MPP**, not HTTP-level x402. `mppx` ships a purpose-built MCP payment transport (`Transport.mcpSdk()`): unpaid priced tool calls throw `McpError` code `-32042` with the challenge in `error.data`; credentials travel in `_meta["org.paymentauth/credential"]`; receipts attach to tool results. We build on it with `@stellar/mpp`'s charge method. API: `toolPayments(config)` returning a `guard(toolName, handler)` wrapper + `priceOf(toolName)`. `initialize`, `tools/list`, and unpriced tools pass through untouched.
+- The paying client side (`wrapPaidMcpClient`, via `mppx`'s `McpClient.wrap`) lives in `@stellarpay/mcp` too (amended from §5: keeps `@stellarpay/client` MCP-free); a `payingHttpTransport` helper (MCP SDK's `StreamableHTTPClientTransport` `fetch` option, verified) also supports HTTP-level-gated servers.
+- Emits payment events via `onPayment`.
 
 ## 7. Hosted demos (Railway, one project, six services)
 
