@@ -11,7 +11,14 @@
     "smoke": "tsx scripts/smoke.ts"
   },
   "devDependencies": {
+    "@hono/node-server": "^2.0.12",
+    "@stellar/mpp": "^0.7.1",
+    "@stellarpay/client": "workspace:*",
+    "@stellarpay/core": "workspace:*",
+    "@stellarpay/hono": "workspace:*",
+    "@stellarpay/shared": "workspace:*",
     "@types/node": "^22.10.0",
+    "hono": "^4",
     "tsx": "^4.19.0",
     "typescript": "^5.9.2",
     "vitest": "^3.0.0"

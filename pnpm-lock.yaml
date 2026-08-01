@@ -11,9 +11,30 @@ importers:
 
   .:
     devDependencies:
+      '@hono/node-server':
+        specifier: ^2.0.12
+        version: 2.0.12(hono@4.12.33)
+      '@stellar/mpp':
+        specifier: ^0.7.1
+        version: 0.7.1(@stellar/stellar-sdk@15.1.0)(mppx@0.6.31(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(express@5.2.1)(hono@4.12.33)(typescript@5.9.3)(viem@2.55.10(typescript@5.9.3)(zod@4.4.3)))
+      '@stellarpay/client':
+        specifier: workspace:*
+        version: link:packages/client
+      '@stellarpay/core':
+        specifier: workspace:*
+        version: link:packages/core
+      '@stellarpay/hono':
+        specifier: workspace:*
+        version: link:packages/hono
+      '@stellarpay/shared':
+        specifier: workspace:*
+        version: link:packages/shared
       '@types/node':
         specifier: ^22.10.0
         version: 22.20.1
+      hono:
+        specifier: ^4
+        version: 4.12.33
       tsx:
         specifier: ^4.19.0
         version: 4.23.1
