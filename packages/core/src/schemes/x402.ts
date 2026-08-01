@@ -1,6 +1,6 @@
 import { x402ResourceServer, x402HTTPResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactStellarScheme } from "@x402/stellar/exact/server";
-import { NETWORKS } from "@stellarpay/shared";
+import { NETWORKS, dollarToDecimal } from "@stellarpay/shared";
 import { webAdapter } from "./webAdapter.js";
 import type { Receipt, SchemeModule, SchemeOutcome, StellarpayConfig } from "../types.js";
 
@@ -38,7 +38,7 @@ export function createX402Module(cfg: StellarpayConfig): SchemeModule {
       if (!settle.success) return { type: "respond", response: toResponse(settle.response) };
       const receipt: Receipt = {
         scheme: "x402", route: match.pattern, network: cfg.network,
-        amount: typeof match.rule.price === "string" ? match.rule.price.replace("$", "") : match.rule.price.amount,
+        amount: typeof match.rule.price === "string" ? dollarToDecimal(match.rule.price) : match.rule.price.amount,
         asset: typeof match.rule.price === "string" ? "USDC" : match.rule.price.asset,
         raw: JSON.stringify(settle), timestamp: new Date().toISOString(),
       };

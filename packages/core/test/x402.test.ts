@@ -54,10 +54,12 @@ describe("x402 module", () => {
       expect(out.response.headers.get("PAYMENT-REQUIRED")).toBeTruthy();
     }
   });
-  it("passes through non-configured paths as internal error (module only sees matched routes)", async () => {
+  it("unpaid request with no payment header yields a 402 challenge regardless of method normalization", async () => {
     const mod = createX402Module(cfg);
     await mod.init?.();
     const out = await mod.handle(new Request("http://x/paid", { method: "GET" }), { pattern: "GET /paid", rule: cfg.routes["GET /paid"]! });
     expect(out.type).toBe("respond"); // still a 402 — no payment header supplied
+    // Paid-path/settlement coverage (payment-verified → processSettlement → Receipt) lands in
+    // the cross-package integration test (Task 16), not here.
   });
 });
