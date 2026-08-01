@@ -14,6 +14,12 @@ describe("matchRoute", () => {
     const c = compileRoutes({ "GET /api/*": rule, "GET /api/special": { price: "$0.05" } });
     expect(matchRoute(c, "GET", "/api/special")?.rule.price).toBe("$0.05");
   });
+  it("prefers most-specific wildcard (longest prefix first)", () => {
+    // Declare broader wildcard BEFORE more-specific one: /api/* declared before /api/admin/*
+    const c = compileRoutes({ "GET /api/*": { price: "$0.01" }, "GET /api/admin/*": { price: "$0.05" } });
+    expect(matchRoute(c, "GET", "/api/admin/users")?.rule.price).toBe("$0.05");
+    expect(matchRoute(c, "GET", "/api/public/files")?.rule.price).toBe("$0.01");
+  });
   it("returns undefined for unlisted", () => expect(matchRoute(compiled, "GET", "/free")).toBeUndefined());
   it("ignores query strings (caller passes pathname)", () => expect(matchRoute(compiled, "GET", "/a")).toBeTruthy());
 });
