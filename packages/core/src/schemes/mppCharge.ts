@@ -10,7 +10,20 @@ function amountFor(rule: RouteRule): { amount: string; asset: string } {
   return { amount: rule.price.amount, asset: rule.price.asset };
 }
 
-/** MPP charge scheme: per-request on-chain settlement via mppx + @stellar/mpp (pull mode). */
+/**
+ * MPP charge scheme: per-request on-chain settlement via mppx + @stellar/mpp (pull mode).
+ *
+ * Replay protection is backed by `Store.memory()` — an in-process `Map` scoped to this
+ * module instance. Consequences to be aware of before relying on this in production:
+ * - State is lost on process restart, so a spent challenge could be re-verified after a
+ *   redeploy or crash.
+ * - It is not shared across processes or instances, so in a horizontally-scaled or
+ *   serverless deployment a credential spent against one instance can still replay
+ *   against a sibling instance.
+ * Single-process deployments are the supported v0.1 topology; a pluggable store (e.g.
+ * Redis-backed, satisfying mppx's `Store.AtomicStore` contract) is on the roadmap for
+ * multi-instance deployments.
+ */
 export function createMppChargeModule(cfg: StellarpayConfig): SchemeModule {
   const mppx = Mppx.create({
     secretKey: cfg.mppSecretKey!,
