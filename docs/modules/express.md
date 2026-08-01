@@ -16,7 +16,7 @@ with settlement headers, or next().
 ## Public Surface
 
 - `function stellarpayExpress(configOrInstance: unknown): RequestHandler`
-  (`packages/express/src/index.ts:31-42`) — accepts either a raw config object (which is
+  (`packages/express/src/index.ts:36-48`) — accepts either a raw config object (which is
   passed to `stellarpay()` for validation and instantiation) or a pre-built `Stellarpay`
   instance; returns an Express `RequestHandler` that converts the incoming request to Web
   standard form, calls `pay.handleWithMeta()`, and dispatches on the outcome: writes a
@@ -28,13 +28,14 @@ with settlement headers, or next().
 - `toWebRequest(req: ExReq): Request` — constructs URL from Express Request's protocol,
   host, and originalUrl; copies headers as a Web standard `Headers` object. Bodies are
   intentionally omitted since payment verification is header-based
-  (`packages/express/src/index.ts:8-17`).
-- `writeResponse(res: ExRes, web: Response): Promise<void>` — copies headers from the
-  Web standard Response and writes the status and body to the Express Response
-  (`packages/express/src/index.ts:22-26`).
+  (`packages/express/src/index.ts:9-18`).
+- `writeResponse(res: ExRes, web: Response): Promise<void>` — copies all headers from the
+  Web standard Response to the Express Response, with special handling for multi-value
+  Set-Cookie headers via `getSetCookie()` to preserve all cookie values; writes the status
+  and body to the Express Response (`packages/express/src/index.ts:24-33`).
 - `stellarpayExpress` closure — binds a `Stellarpay` instance to middleware logic that
   handles async dispatch, outcome routing, and error propagation
-  (`packages/express/src/index.ts:31-42`).
+  (`packages/express/src/index.ts:36-48`).
 
 ## Dependencies
 
@@ -64,16 +65,28 @@ with settlement headers, or next().
   `stellarpay.handle()` or the response body from the route handler. It is for header-based
   payment gating only; if a route needs to read the body, the request still arrives at that
   handler after the middleware's `next()` call, and it can read from `req` normally.
+- **Multi-value Set-Cookie headers.** Web standard Response headers map multi-value headers
+  (like Set-Cookie) to multiple iterations, but iterating headers with `forEach()` yields
+  only the last value per key (Express's `res.setHeader(key, val)` replaces rather than
+  appends). `writeResponse` special-cases Set-Cookie: it calls `web.headers.getSetCookie()`
+  to retrieve the array of all cookies at once, then passes that array to `res.setHeader()`
+  to preserve all values (`packages/express/src/index.ts:30-31`).
 
 ## Testing
 
-- `packages/express/test/express.test.ts` — middleware dispatch: unmatched routes pass
-  through to the handler (200, correct body), matched paid routes return 402
-  (`packages/express/test/express.test.ts:17-34`).
+- `packages/express/test/express.test.ts` — middleware dispatch tests
+  (`packages/express/test/express.test.ts:20-50`):
+  - "lets free routes through" — unmatched routes pass through to the handler (200, correct body)
+  - "gates paid routes with 402 + challenge headers" — matched paid routes return 402
+  - "preserves multi-value set-cookie headers" — verifies that multiple Set-Cookie header
+    values from a Response are preserved (not dropped) when written to the Express response
 - Run: `pnpm --filter @stellarpay/express test` (or `pnpm test` from repo root).
 
 ## Verified Against
 
 - Source read and line numbers confirmed 2026-08-01 against the current working tree
   (`packages/express/src/index.ts`, `packages/express/test/express.test.ts`).
-- All tests pass, typecheck and build succeed, root suite passes (51 tests across 11 files).
+- `writeResponse` updated to handle multi-value Set-Cookie headers via `getSetCookie()`;
+  new test "preserves multi-value set-cookie headers" added.
+- All tests pass (3 tests in express.test.ts), typecheck and build succeed, root suite
+  passes (52 tests across 11 files).

@@ -19,10 +19,16 @@ function toWebRequest(req: ExReq): Request {
 
 /**
  * Writes a Web standard Response to an Express Response.
- * Copies headers and writes the body.
+ * Copies headers (with special handling for multi-value Set-Cookie) and writes the body.
  */
 async function writeResponse(res: ExRes, web: Response): Promise<void> {
-  web.headers.forEach((value, key) => res.setHeader(key, value));
+  // Copy all headers except set-cookie (which may have multiple values).
+  web.headers.forEach((value, key) => {
+    if (key.toLowerCase() !== "set-cookie") res.setHeader(key, value);
+  });
+  // Multi-value headers: getSetCookie() returns an array of all values.
+  const cookies = web.headers.getSetCookie();
+  if (cookies.length > 0) res.setHeader("set-cookie", cookies);
   res.status(web.status).send(Buffer.from(await web.arrayBuffer()));
 }
 

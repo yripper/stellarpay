@@ -27,4 +27,24 @@ describe("stellarpayExpress", () => {
     const res = await request(app()).get("/paid");
     expect(res.status).toBe(402);
   });
+  it("preserves multi-value set-cookie headers", async () => {
+    // Build a mock Response with multiple Set-Cookie headers.
+    const response = new Response("test body", { status: 200 });
+    response.headers.append("set-cookie", "cookie1=value1; Path=/");
+    response.headers.append("set-cookie", "cookie2=value2; Path=/");
+    const mockPay = {
+      handleWithMeta: async () => ({ response }),
+    };
+
+    const a = express();
+    a.use(stellarpayExpress(mockPay));
+    const res = await request(a).get("/");
+
+    expect(res.status).toBe(200);
+    const setCookieHeader = res.headers["set-cookie"];
+    expect(Array.isArray(setCookieHeader)).toBe(true);
+    expect(setCookieHeader).toHaveLength(2);
+    expect(setCookieHeader).toContain("cookie1=value1; Path=/");
+    expect(setCookieHeader).toContain("cookie2=value2; Path=/");
+  });
 });
