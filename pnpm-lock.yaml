@@ -35,6 +35,12 @@ importers:
       '@stellarpay/shared':
         specifier: workspace:*
         version: link:../shared
+      '@x402/core':
+        specifier: ^2.20.0
+        version: 2.20.0
+      '@x402/stellar':
+        specifier: ^2.20.0
+        version: 2.20.0
       mppx:
         specifier: 0.6.31
         version: 0.6.31(typescript@5.9.3)(viem@2.55.10(typescript@5.9.3)(zod@4.4.3))
@@ -454,6 +460,13 @@ packages:
 
   '@vitest/utils@3.2.7':
     resolution: {integrity: sha512-x6BDOd7dyo3PFLY3I9/HJ25X/6OurhGXk2/B9gOZNPF7XDVjeBK4k01lQE5uvDpbuheErh91qYuE1E2OEjK3Rw==}
+
+  '@x402/core@2.20.0':
+    resolution: {integrity: sha512-BaPPVTZ4LAeYKB0yRMOnuzDGoratyLeYobBMH/leFmRe+al94RQnw/uwuw9Rgsupsywz6JQdHzhm4LsE4snuDg==}
+
+  '@x402/stellar@2.20.0':
+    resolution: {integrity: sha512-67swEAx96rTMoVtEao/GZ7yjbXORxCeAzPeKr8BOx4gt26Qq/TL73T8DS4Zd1bCh+8ISwkyDF3ISlWJelCosYQ==}
+    engines: {node: '>=22.0.0'}
 
   abitype@1.2.3:
     resolution: {integrity: sha512-Ofer5QUnuUdTFsBRwARMoWKOH1ND5ehwYhJ3OJ/BQO+StkwQjHw0XyVh4vDttzHB7QOFhPHa/o413PJ82gU/Tg==}
@@ -990,6 +1003,9 @@ packages:
     engines: {node: '>= 14.6'}
     hasBin: true
 
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
@@ -1295,6 +1311,17 @@ snapshots:
       '@vitest/pretty-format': 3.2.7
       loupe: 3.2.1
       tinyrainbow: 2.0.0
+
+  '@x402/core@2.20.0':
+    dependencies:
+      zod: 3.25.76
+
+  '@x402/stellar@2.20.0':
+    dependencies:
+      '@stellar/stellar-sdk': 15.1.0
+      '@x402/core': 2.20.0
+    transitivePeerDependencies:
+      - debug
 
   abitype@1.2.3(typescript@5.9.3)(zod@4.4.3):
     optionalDependencies:
@@ -1851,5 +1878,7 @@ snapshots:
   ws@8.21.0: {}
 
   yaml@2.9.0: {}
+
+  zod@3.25.76: {}
 
   zod@4.4.3: {}
