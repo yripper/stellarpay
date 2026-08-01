@@ -51,6 +51,19 @@ export class SpendTracker {
     this.cumulativeBaseUnits = nextTotal;
   }
 
+  /**
+   * Reverses a prior successful `checkAndReserve` reservation. Callers use this when a
+   * payment attempt that passed the limit gate later fails during signing or settlement
+   * (bad signer, network error, misconfigured secret) — without it, a failed attempt
+   * would permanently consume budget it never actually spent, blocking future
+   * legitimate calls. A no-op for `undefined`: the unknown-amount-allowed path in
+   * `checkAndReserve` never reserves anything, so there is nothing to release.
+   */
+  release(baseUnits: bigint | undefined): void {
+    if (baseUnits === undefined) return;
+    this.cumulativeBaseUnits -= baseUnits;
+  }
+
   private block(reason: "per-call-limit" | "total-limit" | "unparseable-amount", url: string): never {
     this.emit({ type: "blocked", reason, url });
     throw new SpendLimitExceeded(`Payment blocked (${reason}) for ${url}`);

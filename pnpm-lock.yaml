@@ -47,6 +47,10 @@ importers:
       mppx:
         specifier: 0.6.31
         version: 0.6.31(hono@4.12.33)(typescript@5.9.3)(viem@2.55.10(typescript@5.9.3)(zod@4.4.3))
+    devDependencies:
+      '@stellarpay/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/core:
     dependencies:
