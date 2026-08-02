@@ -62,4 +62,43 @@ describe("x402 module", () => {
     // Paid-path/settlement coverage (payment-verified → processSettlement → Receipt) lands in
     // the cross-package integration test (Task 16), not here.
   });
+
+  // The OZ testnet facilitator requires `Authorization: Bearer <key>` on every endpoint; without
+  // it, `/supported` (and `/verify`/`/settle`) return 401. This proves `facilitatorApiKey`
+  // actually reaches the outbound fetch, not just that config accepts it.
+  it("sends a Bearer Authorization header to the facilitator when facilitatorApiKey is set", async () => {
+    const seenAuthHeaders: (string | null)[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        seenAuthHeaders.push(new Headers(init?.headers).get("Authorization"));
+        if (url.endsWith("/supported")) return new Response(JSON.stringify(supportedResponse), { status: 200 });
+        throw new Error(`unexpected fetch in test: ${url}`);
+      }),
+    );
+
+    const mod = createX402Module({ ...cfg, facilitatorApiKey: "test-facilitator-key" });
+    await mod.init?.();
+
+    expect(seenAuthHeaders).toContain("Bearer test-facilitator-key");
+  });
+
+  it("sends no Authorization header when facilitatorApiKey is not set", async () => {
+    const seenAuthHeaders: (string | null)[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        seenAuthHeaders.push(new Headers(init?.headers).get("Authorization"));
+        if (url.endsWith("/supported")) return new Response(JSON.stringify(supportedResponse), { status: 200 });
+        throw new Error(`unexpected fetch in test: ${url}`);
+      }),
+    );
+
+    const mod = createX402Module(cfg); // no facilitatorApiKey
+    await mod.init?.();
+
+    expect(seenAuthHeaders).toEqual([null]);
+  });
 });

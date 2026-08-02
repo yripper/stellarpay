@@ -28,4 +28,8 @@ describe("parseConfig", () => {
     expect(() => parseConfig({ ...valid, mppSecretKey: "s", routes: { "GET /a": { price: "$1", scheme: "mpp-channel" } } })).toThrow(StellarpayConfigError));
   it("rejects unknown scheme", () =>
     expect(() => parseConfig({ ...valid, routes: { "GET /a": { price: "$1", scheme: "stripe" } } })).toThrow(StellarpayConfigError));
+  it("accepts an optional facilitatorApiKey", () => {
+    const c = parseConfig({ ...valid, facilitatorApiKey: "test-facilitator-key" });
+    expect(c.facilitatorApiKey).toBe("test-facilitator-key");
+  });
 });

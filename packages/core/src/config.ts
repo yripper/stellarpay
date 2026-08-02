@@ -73,6 +73,10 @@ const configSchema = z
     payTo: z.string().regex(PAY_TO_PATTERN, "payTo must be a valid Stellar account (G...) or contract (C...) address"),
     routes: z.record(routeKeySchema, routeRuleSchema),
     facilitatorUrl: z.string().optional(),
+    // Semi-sensitive, like mppSecretKey/sponsorSecret below: no format constraint (it's an
+    // opaque bearer token from the facilitator, not a Stellar key), and formatZodError() never
+    // echoes values — only field names — so this is never leaked in a validation error.
+    facilitatorApiKey: z.string().optional(),
     mppSecretKey: z.string().optional(),
     sponsorSecret: z.string().optional(),
     channel: channelSchema.optional(),

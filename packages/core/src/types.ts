@@ -44,6 +44,13 @@ export type StellarpayConfig = {
   payTo: string;
   routes: Record<string, RouteRule>;
   facilitatorUrl?: string;
+  /**
+   * Bearer token for the x402 facilitator's `verify`/`settle`/`supported` endpoints (the OZ
+   * testnet facilitator requires this — get one free, unauthenticated, from
+   * `https://channels.openzeppelin.com/testnet/gen`). Semi-sensitive: never logged or echoed
+   * in error messages, same as `mppSecretKey`/`sponsorSecret`.
+   */
+  facilitatorApiKey?: string;
   /** HMAC secret for mppx credentials; required if any route uses an mpp-* scheme. */
   mppSecretKey?: string;
   /** S... secret key; required if any route sets `sponsorGas`. */

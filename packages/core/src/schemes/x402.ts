@@ -9,9 +9,27 @@ function toResponse(instr: { status: number; headers: Record<string, string>; bo
   return new Response(body, { status: instr.status, headers: instr.headers });
 }
 
+/**
+ * Builds the facilitator client's `createAuthHeaders` hook when a `facilitatorApiKey` is
+ * configured. `@x402/core`'s `FacilitatorConfig.createAuthHeaders` must return a *per-path*
+ * object (`{ verify, settle, supported }`, each a headers object) — a flat headers object
+ * throws (see `@x402/core`'s own doc comment on `FacilitatorConfig`, and
+ * `chunk-4Y6I6537.mjs`'s `createAuthHeaders()`, which detects and rejects the flat shape). The
+ * OZ testnet facilitator requires `Authorization: Bearer <key>` on all three endpoints, so the
+ * same header object is reused for each path.
+ */
+function authHeadersFor(facilitatorApiKey: string | undefined) {
+  if (!facilitatorApiKey) return undefined;
+  const headers = { Authorization: `Bearer ${facilitatorApiKey}` };
+  return async () => ({ verify: headers, settle: headers, supported: headers });
+}
+
 /** x402 scheme: verification + settlement through the configured facilitator. */
 export function createX402Module(cfg: StellarpayConfig): SchemeModule {
-  const facilitator = new HTTPFacilitatorClient({ url: cfg.facilitatorUrl ?? NETWORKS[cfg.network].facilitatorUrl });
+  const facilitator = new HTTPFacilitatorClient({
+    url: cfg.facilitatorUrl ?? NETWORKS[cfg.network].facilitatorUrl,
+    createAuthHeaders: authHeadersFor(cfg.facilitatorApiKey),
+  });
   const server = new x402ResourceServer(facilitator);
   server.register(cfg.network, new ExactStellarScheme());
   const x402Routes = Object.fromEntries(

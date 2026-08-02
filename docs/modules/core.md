@@ -44,7 +44,10 @@ internals or unhandled rejections for the host app.
 - `type PriceInput = string | { asset: string; amount: string }` (`types.ts:19`)
 - `type RouteRule = { price: PriceInput; scheme?: Scheme; sponsorGas?: boolean; description?: string }` (`types.ts:22`)
 - `type Receipt` — settlement receipt shape emitted to `onPayment` (`types.ts:25-39`)
-- `type StellarpayConfig` — top-level SDK config (`types.ts:42-55`)
+- `type StellarpayConfig` — top-level SDK config (`types.ts:42-62`), including
+  `facilitatorApiKey?: string` (`types.ts:53`) — bearer token for the x402 facilitator's
+  `verify`/`settle`/`supported` endpoints; semi-sensitive, never logged or echoed in error
+  messages, same handling as `mppSecretKey`/`sponsorSecret`
 - `type SchemeOutcome = { type: "pass"; receipt?: Receipt; headers?: Record<string, string> } | { type: "respond"; response: Response }` (`types.ts:58-60`)
 - `type SchemeModule = { scheme: Scheme; init?(): Promise<void>; handle(req, match): Promise<SchemeOutcome> }` (`types.ts:63-67`)
 - `class StellarpayConfigError extends Error` — thrown by `parseConfig` (`types.ts:70`)
@@ -54,7 +57,11 @@ internals or unhandled rejections for the host app.
 - `function parseConfig(input: unknown): StellarpayConfig` — Zod-validates config, cross-checks
   that `mppSecretKey`/`sponsorSecret`/`channel` are present when routes need them; throws
   `StellarpayConfigError` with a field-naming (never value-echoing) message on failure
-  (`packages/core/src/config.ts:125-131`).
+  (`packages/core/src/config.ts:129-135`). `facilitatorApiKey` is validated as a plain optional
+  string (`config.ts`'s `configSchema`, next to `mppSecretKey`) — no format constraint (it's an
+  opaque bearer token, not a Stellar key) and no cross-field requirement: unlike
+  `mppSecretKey`/`sponsorSecret`/`channel`, omitting it never fails validation, since the x402
+  facilitator auth requirement is a live-network concern `parseConfig` can't see at config time.
 
 ### Router
 
@@ -71,7 +78,11 @@ internals or unhandled rejections for the host app.
   `@stellar/mpp/channel/server`, in-memory state (`packages/core/src/schemes/mppChannel.ts:37-71`).
   Also re-exports `close`, `getChannelState`, `watchChannel` for ops tooling (`mppChannel.ts:9`).
 - `createX402Module(cfg): SchemeModule` — x402 verification + settlement through the
-  configured facilitator (`packages/core/src/schemes/x402.ts:13-52`).
+  configured facilitator (`packages/core/src/schemes/x402.ts:28-70`). When
+  `cfg.facilitatorApiKey` is set, wires `HTTPFacilitatorClient`'s `createAuthHeaders` via
+  `authHeadersFor` (`x402.ts:21-25`) so every `verify`/`settle`/`supported` call carries
+  `Authorization: Bearer <key>` — required by the OZ testnet facilitator, which 401s without
+  it.
 - `webAdapter(req: Request): HTTPAdapter` — adapts a `Request` for `@x402/core/server`
   (`packages/core/src/schemes/webAdapter.ts:4-14`).
 
@@ -92,6 +103,10 @@ that need them import directly from `src/schemes/*.ts`.
 - `createSchemeModule(scheme, cfg)` — exhaustive switch instantiating one scheme module: `packages/core/src/stellarpay.ts:32-45`
 - `isNetworkError(err)` — `TypeError` or `cause.code === "ECONNREFUSED"` heuristic: `packages/core/src/stellarpay.ts:53-59`
 - `errorResponse(status, body)` — fixed-shape JSON error response builder: `packages/core/src/stellarpay.ts:62-64`
+- `authHeadersFor(facilitatorApiKey)` — builds the per-path `createAuthHeaders` hook
+  (`{ verify, settle, supported }`, each `{ Authorization: "Bearer <key>" }`) for
+  `HTTPFacilitatorClient`; returns `undefined` (no auth) when `facilitatorApiKey` is unset:
+  `packages/core/src/schemes/x402.ts:21-25`
 
 ## Dependencies
 
@@ -105,8 +120,25 @@ that need them import directly from `src/schemes/*.ts`.
 - **Only referenced schemes are instantiated.** `stellarpay()` computes the set of schemes
   actually used across `cfg.routes` (defaulting unset `scheme` to `"x402"`, matching the
   same default `createX402Module` uses internally to build its own route subset — see
-  `packages/core/src/schemes/x402.ts:19`) and only calls the matching factory for each. A
+  `packages/core/src/schemes/x402.ts:37`) and only calls the matching factory for each. A
   config with no `mpp-channel` routes never touches `cfg.channel`, so it's safe to omit.
+- **The x402 facilitator requires auth, and `parseConfig` can't enforce that.** The OZ
+  testnet facilitator's `/verify`, `/settle`, and `/supported` endpoints all require
+  `Authorization: Bearer <key>` — omitting `facilitatorApiKey` doesn't fail config
+  validation (see Config above), it fails at request time against the live facilitator with
+  a 401 that `x402ResourceServer`/`x402HTTPResourceServer` surface as their own error. A free
+  testnet key: `curl https://channels.openzeppelin.com/testnet/gen` → `{"apiKey":"..."}`
+  (unauthenticated endpoint). Confirmed live: `/supported` returns
+  `{"kinds":[{"extra":{"areFeesSponsored":true},"network":"stellar:testnet","scheme":"exact",...}]}`
+  with the header, 401 without it.
+- **`@x402/core`'s `createAuthHeaders` must return a *per-path* object, not flat headers.**
+  `FacilitatorConfig.createAuthHeaders` (the installed `@x402/core`'s own doc comment, and
+  `chunk-4Y6I6537.mjs`'s runtime `createAuthHeaders()`) requires
+  `{ verify?, settle?, supported?, bazaar? }`, each a headers object — passing a flat
+  `{ Authorization: "..." }` throws at call time (a deliberate guard against silently
+  dropping auth on every request). `authHeadersFor` (`x402.ts:21-25`) returns the same
+  headers object for all three paths stellarpay uses, since the OZ facilitator's requirement
+  is uniform across them.
 - **Two nested try/catch layers.** The outer boundary in `handleWithMeta`
   (`stellarpay.ts:82-111`) covers route matching and `mod.handle()`; it maps unexpected
   errors to a fixed-shape response and always `console.error`s the real error server-side
@@ -115,7 +147,7 @@ that need them import directly from `src/schemes/*.ts`.
   and is swallowed rather than turning a successful payment into a 500.
 - **`onPayment` only fires when there's a receipt.** `SchemeOutcome`'s `pass` variant has an
   optional `receipt` (e.g. x402's "no payment required" case passes without one — see
-  `packages/core/src/schemes/x402.ts:35`); `handleWithMeta` skips the hook call entirely in
+  `packages/core/src/schemes/x402.ts:53`); `handleWithMeta` skips the hook call entirely in
   that case rather than invoking it with `undefined`.
 - **`isNetworkError`'s `TypeError` check is broad by design, per spec.** Any `TypeError`
   thrown anywhere inside route matching or scheme `handle()` — not just from `fetch()` —
@@ -146,6 +178,13 @@ that need them import directly from `src/schemes/*.ts`.
   shape, and synchronous `StellarpayConfigError` on bad config.
 - `packages/core/test/config.test.ts`, `router.test.ts`, `mppCharge.test.ts`,
   `mppChannel.test.ts`, `x402.test.ts` — per-module unit tests for Tasks 4–8.
+- `config.test.ts` — `"accepts an optional facilitatorApiKey"`: `parseConfig` round-trips the
+  field unchanged.
+- `x402.test.ts` — `"sends a Bearer Authorization header to the facilitator when
+  facilitatorApiKey is set"` / `"sends no Authorization header when facilitatorApiKey is not
+  set"`: both capture the mocked fetch's `init.headers` on the `/supported` call and assert
+  on the `Authorization` header directly, proving `authHeadersFor` actually reaches the
+  outbound request rather than just that config accepts the field.
 - Run: `pnpm --filter @stellarpay/core test` (or `pnpm test` from repo root for the full
   workspace suite).
 
@@ -156,3 +195,12 @@ that need them import directly from `src/schemes/*.ts`.
 - `mppx@0.6.31` behavior on a non-standard `Request`-like object confirmed by direct
   invocation (`createMppChargeModule(cfg).handle(broken, match)`) and via the full
   `stellarpay()` orchestrator, both producing a 402 with the stderr warning quoted above.
+- 2026-08-02 (`facilitatorApiKey` fix round): line numbers recounted against the current
+  working tree after adding `facilitatorApiKey` to `types.ts`/`config.ts` and `authHeadersFor`
+  to `schemes/x402.ts`. The OZ facilitator's bearer-auth requirement and the `/gen` endpoint
+  were confirmed live: with `Authorization: Bearer <key>`, `/supported` returns
+  `{"kinds":[{"extra":{"areFeesSponsored":true},"network":"stellar:testnet","scheme":"exact",...}]}`;
+  without it, 401. `@x402/core`'s per-path `createAuthHeaders` contract (flat headers object
+  throws) verified against the installed package's own doc comment
+  (`node_modules/@x402/core/dist/esm/x402Client-0g4vl2En.d.mts:60-85`) and its runtime
+  implementation (`chunk-4Y6I6537.mjs`'s `createAuthHeaders()`/`getSupported()`).

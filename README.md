@@ -17,6 +17,8 @@ import { stellarpay } from "@stellarpay/core";
 const paywall = stellarpay({
   network: "stellar:testnet",                    // preset picks facilitator URL + testnet USDC SAC
   payTo: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5", // your recipient address
+  facilitatorApiKey: process.env.FACILITATOR_KEY!, // required — get one free:
+                                                     //   curl https://channels.openzeppelin.com/testnet/gen
   mppSecretKey: process.env.MPP_SECRET_KEY!,      // required: /summarize and /ticks use mpp-*
   sponsorSecret: process.env.SPONSOR_SECRET!,     // required: /summarize sets sponsorGas
   channel: {                                      // required: /ticks uses mpp-channel
@@ -36,7 +38,10 @@ const paywall = stellarpay({
 This is the config example from the design spec (§3), adapted to be valid against the real
 `parseConfig` — `mppSecretKey`, `sponsorSecret`, and `channel` are required once a route
 declares `mpp-charge`, `sponsorGas`, or `mpp-channel` respectively
-(`packages/core/src/config.ts:89-109`). Verified by running it through `parseConfig` directly.
+(`packages/core/src/config.ts:93-113`). `facilitatorApiKey` isn't required by `parseConfig`
+itself, but the OZ testnet facilitator's `/verify`, `/settle`, and `/supported` endpoints all
+require `Authorization: Bearer <key>` — omit it and the x402 route above 401s against the live
+facilitator. Verified by running the full config through `parseConfig` directly.
 
 ## What exists vs. what stellarpay adds
 
@@ -113,14 +118,16 @@ Publishing is in progress under the `@stellarpay` npm scope — see [PUBLISHING.
 
 ## Quickstart
 
-**1. Install** (once published — see [PUBLISHING.md](./PUBLISHING.md); until then, clone this
-repo and use the workspace packages directly via `pnpm install`):
+**1. Install**
+
+> **Not yet published — see [PUBLISHING.md](./PUBLISHING.md).** Until then, clone this repo
+> and use the workspace packages directly via `pnpm install`. Once published:
 
 ```sh
 npm install @stellarpay/core @stellarpay/express
 ```
 
-**2. Configure** a paywall — one x402 route, no extra secrets needed:
+**2. Configure** a paywall — one x402 route:
 
 ```ts
 import { stellarpay } from "@stellarpay/core";
@@ -128,6 +135,8 @@ import { stellarpay } from "@stellarpay/core";
 const paywall = stellarpay({
   network: "stellar:testnet",
   payTo: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5", // your Stellar address
+  facilitatorApiKey: process.env.FACILITATOR_KEY!, // required — get one free:
+                                                     //   curl https://channels.openzeppelin.com/testnet/gen
   routes: {
     "GET /weather": { price: "$0.001" },
   },
@@ -174,6 +183,11 @@ calls.
 - **Testnet-first.** The `stellar:testnet` network preset pins the OZ facilitator and a
   **testnet** USDC SAC address (`packages/shared/src/networks.ts`). A `stellar:pubnet` preset
   exists structurally but mainnet hardening is still on the [roadmap](./docs/ROADMAP.md).
+- **The x402 facilitator requires auth.** The OZ facilitator's `/verify`, `/settle`, and
+  `/supported` endpoints all require `Authorization: Bearer <key>` — without one they 401.
+  Set `StellarpayConfig.facilitatorApiKey` (see the hero snippet above); get a free testnet
+  key with `curl https://channels.openzeppelin.com/testnet/gen`. `pnpm smoke` auto-generates
+  one at startup if `SMOKE_FACILITATOR_KEY` isn't set (see `.env.example`).
 - **Pinned dependency versions**: `mppx` exact `0.6.31` (across `core`, `client`, `mcp`),
   `@stellar/stellar-sdk` exact `15.1.0` (workspace-wide `pnpm.overrides`) — see each package's
   `package.json`.

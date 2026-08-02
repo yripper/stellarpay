@@ -71,6 +71,37 @@ type SmokeEnv = {
   sponsorSecret: string | undefined;
 };
 
+// The OZ testnet facilitator requires `Authorization: Bearer <key>` on `/verify`, `/settle`,
+// and `/supported` — without one the x402 leg fails with 401. `/gen` itself is unauthenticated.
+const FACILITATOR_GEN_URL = "https://channels.openzeppelin.com/testnet/gen";
+
+/**
+ * Resolves the x402 facilitator API key: `SMOKE_FACILITATOR_KEY` if set, otherwise a fresh one
+ * auto-generated from the facilitator's own unauthenticated `/gen` endpoint. Never logs the key
+ * value either way (whether from env or freshly generated) — only whether one is in use — since
+ * it's a semi-sensitive bearer token, same handling as `core`'s `StellarpayConfig.facilitatorApiKey`.
+ */
+async function resolveFacilitatorApiKey(): Promise<string> {
+  const fromEnv = process.env["SMOKE_FACILITATOR_KEY"];
+  if (fromEnv) {
+    console.log("facilitator API key: using SMOKE_FACILITATOR_KEY from env");
+    return fromEnv;
+  }
+  console.log(`facilitator API key: SMOKE_FACILITATOR_KEY not set — auto-generating one from ${FACILITATOR_GEN_URL}`);
+  const res = await fetch(FACILITATOR_GEN_URL);
+  if (!res.ok) {
+    throw new Error(
+      `Failed to auto-generate a facilitator API key (${res.status}): ${await res.text().catch(() => res.statusText)}`,
+    );
+  }
+  const body = (await res.json()) as { apiKey?: unknown };
+  if (typeof body.apiKey !== "string" || !body.apiKey) {
+    throw new Error("Facilitator /gen endpoint response had no apiKey field");
+  }
+  console.log("facilitator API key: auto-generated");
+  return body.apiKey;
+}
+
 /** Reads and validates the required env vars. `undefined` means "print setup instructions and stop". */
 function readEnv(): SmokeEnv | undefined {
   const buyerSecret = process.env["SMOKE_BUYER_SECRET"];
@@ -95,6 +126,10 @@ Copy .env.example to .env and fill it in, then re-run \`pnpm smoke\`:
   SMOKE_MPP_SECRET     HMAC secret for the mpp-charge server (any string).
   SMOKE_SPONSOR_SECRET Optional: secret seed (S...) of a sponsor account that pays the
                         mpp leg's transaction fee (adds sponsorGas to the /mpp route).
+  SMOKE_FACILITATOR_KEY Optional: x402 facilitator bearer token. If unset, one is
+                        auto-generated at startup from the facilitator's own free,
+                        unauthenticated endpoint:
+                          curl https://channels.openzeppelin.com/testnet/gen
 
 Setup for a fresh buyer account:
   1. Generate a keypair, e.g. \`stellar keys generate smoke-buyer --network testnet\` or
@@ -217,6 +252,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  const facilitatorApiKey = await resolveFacilitatorApiKey();
+
   const receipts: Receipt[] = [];
 
   const config: StellarpayConfig = {
@@ -224,6 +261,7 @@ async function main(): Promise<void> {
     payTo: env.payTo,
     mppSecretKey: env.mppSecret,
     rpcUrl: RPC_URL,
+    facilitatorApiKey,
     routes: {
       "GET /x402": { price: "$0.001" }, // scheme defaults to "x402"
       "GET /mpp": { price: "$0.001", scheme: "mpp-charge", ...(env.sponsorSecret ? { sponsorGas: true } : {}) },
