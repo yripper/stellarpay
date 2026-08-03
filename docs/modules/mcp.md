@@ -98,8 +98,10 @@ their internal type plumbing.
 - `@stellar/mpp` (`^0.7.1`) — `@stellar/mpp/charge/server`'s `stellar.charge` (server
   method) and `@stellar/mpp/charge/client`'s `stellar` (client method, aliased
   `stellarChargeClient` in `client.ts`); `USDC_SAC_TESTNET` from the package root.
-- `@stellar/stellar-sdk` (`15.1.0`, exact) — `Keypair.fromSecret` for the optional
-  `sponsorSecret` fee-payer.
+- `@stellar/stellar-sdk` (`16.2.0`, exact — bumped from `15.1.0` on 2026-08-03; live testnet
+  emits a Soroban credentials XDR variant `15.1.0` can't parse, see `docs/modules/core.md`'s
+  "stellar-sdk version" section) — `Keypair.fromSecret` for the optional `sponsorSecret`
+  fee-payer.
 - `@stellarpay/shared` (workspace) — `dollarToDecimal`, used internally in `server.ts`
   only; never appears in a public type signature (`ToolPaymentsConfig.prices` and
   `ToolPaymentReceipt.amount` are plain `string`/`Record<string, string>`).

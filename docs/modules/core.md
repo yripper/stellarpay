@@ -188,6 +188,72 @@ that need them import directly from `src/schemes/*.ts`.
 - Run: `pnpm --filter @stellarpay/core test` (or `pnpm test` from repo root for the full
   workspace suite).
 
+## Confirmed Wire Shapes (live testnet smoke, 2026-08-03)
+
+`pnpm smoke` (`scripts/smoke.ts`) was run end-to-end against live testnet infrastructure
+(OZ x402 facilitator + Soroban RPC). Both legs **PASS**. This confirms the two "opaque until
+the smoke run confirms them" shapes referenced elsewhere in this doc and in `x402.ts`/`mppCharge.ts`:
+
+- **x402 `settle` raw** (`packages/core/src/schemes/x402.ts:61`, `receipt.raw`) — confirmed
+  observed shape:
+  ```json
+  {
+    "success": true,
+    "payer": "GDB4W7YOHCURLG6RBI3QTPIKOW5PQQ5YB6X5EA4GCBTK5V637UMDFFEY",
+    "transaction": "47c7eeab699e24eee7abb1d60aaccafca0bc102d9bddb2ec0de7b22b8ed06136",
+    "network": "stellar:testnet",
+    "headers": { "PAYMENT-RESPONSE": "<base64url-encoded copy of success/payer/transaction/network>" },
+    "requirements": { "scheme": "exact", "network": "stellar:testnet", "amount": "10000", "asset": "<SAC address>", "payTo": "<G...>", "maxTimeoutSeconds": 300, "extra": { "areFeesSponsored": true } }
+  }
+  ```
+  The defensive `s["transaction"]` / `s["payer"]` string-narrowing at `x402.ts:64-66` is
+  **confirmed correct**: both fields are present as top-level strings on the real facilitator
+  response, and `receipt.txHash` / `receipt.payer` were populated exactly as expected in the
+  smoke run.
+- **mpp-charge `Payment-Receipt` header** (`packages/core/src/schemes/mppCharge.ts:53`,
+  `receipt.raw`) — the header value is a base64(url)-encoded JSON string. Decoding the
+  smoke run's captured value gives:
+  ```json
+  {
+    "method": "stellar",
+    "reference": "9f8292f40ae2b7dadeae9d7f4ee4e6f8bf92bab42047b490e197d55cae11dd0b",
+    "status": "success",
+    "timestamp": "2026-08-03T18:40:40.097Z"
+  }
+  ```
+  Documented as **opaque-but-observed**: this is `mppx`/`@stellar/mpp`'s own header format,
+  not something `@stellarpay/core` controls or has a published schema for, so no field-level
+  parsing is added on top of it — `mppCharge.ts` stores the raw header string as-is
+  (`receipt.raw`) and does not attempt to extract a `txHash`/`payer` from it (unlike the x402
+  leg), which the smoke run's `receipt.txHash: (absent)` / `receipt.payer: (absent)` output
+  for the `/mpp` leg confirms is the current, intentional behavior — `reference` here is an
+  mppx-internal challenge/payment id, not a verified on-chain tx hash, so it is deliberately
+  not mapped onto `Receipt.txHash`.
+
+## stellar-sdk version (2026-08-03)
+
+`@stellar/stellar-sdk` moved from an exact `15.1.0` pin to an exact `16.2.0` pin (root
+`pnpm.overrides` + every package manifest). Why: live Stellar testnet emits a Soroban
+credentials variant in simulation/auth XDR that `15.1.0`'s bundled XDR definitions don't know
+(`XDR Read Error: unknown SorobanCredentialsType member for value 2`, hit by the `mpp-charge`
+leg via `@stellar/mpp`'s auth-building path) — `16.2.0`'s XDR defines all four
+`SorobanCredentialsType` variants (`sorobanCredentialsSourceAccount` = 0,
+`sorobanCredentialsAddress` = 1, `sorobanCredentialsAddressV2` = 2,
+`sorobanCredentialsAddressWithDelegates` = 3; confirmed by grepping the installed
+`node_modules/.pnpm/@stellar+stellar-sdk@16.2.0/.../dist/stellar-sdk.js`), so value 2 parses
+correctly. `@stellar/mpp@0.7.1`'s own `peerDependencies` still declare
+`"@stellar/stellar-sdk": "^15.1.0"` (its `package.json`) — pnpm resolves this peer against the
+overridden `16.2.0` without a hard failure (no `strict-peer-dependencies` in this repo's
+`.npmrc`); `pnpm why @stellar/stellar-sdk` and `pnpm-lock.yaml` both confirm every consumer
+(including `@stellar/mpp`'s own dependency graph) resolves to the single `16.2.0` copy, not a
+nested/duplicate one. This mismatch is accepted deliberately per this task's brief. No source
+changes were needed elsewhere in the SDK for the bump: `Keypair`/`Transaction`/`StrKey`
+(re-exported from `./base/index.js`) and the `rpc` namespace export
+(`export * as rpc from "./rpc/index.js"`) are unchanged in `16.2.0`'s
+`lib/esm/index.d.ts`/`lib/esm/base/index.d.ts` — confirmed against the installed package's own
+`.d.ts` files, and `pnpm typecheck` (7/7) / `pnpm build` (7/7) / `pnpm test` (19 files, 80
+tests) all pass unmodified.
+
 ## Verified Against
 
 - Source read and line numbers confirmed 2026-08-01 against the current working tree

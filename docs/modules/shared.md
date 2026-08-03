@@ -43,4 +43,6 @@ Provides reusable types, constants, and utilities for working with Stellar netwo
 
 - Stellar network passphrases and RPC endpoints verified against Stellar documentation as of 2026-08-01
 - OpenZeppelin Channels 0.20.0 (`@openzeppelin/relayer-plugin-channels`) for gasless submission
-- @stellar/stellar-sdk 15.1.0 for transaction envelope parsing and RPC communication
+- @stellar/stellar-sdk 16.2.0 (bumped from 15.1.0 on 2026-08-03 — live testnet emits a
+  Soroban credentials XDR variant 15.1.0 can't parse; see `docs/modules/core.md`'s
+  "stellar-sdk version" section) for transaction envelope parsing and RPC communication

@@ -23,5 +23,5 @@
     "typescript": "^5.9.2",
     "vitest": "^3.0.0"
   },
-  "pnpm": { "overrides": { "@stellar/stellar-sdk": "15.1.0" } }
+  "pnpm": { "overrides": { "@stellar/stellar-sdk": "16.2.0" } }
 }

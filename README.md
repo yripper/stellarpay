@@ -189,12 +189,17 @@ calls.
   key with `curl https://channels.openzeppelin.com/testnet/gen`. `pnpm smoke` auto-generates
   one at startup if `SMOKE_FACILITATOR_KEY` isn't set (see `.env.example`).
 - **Pinned dependency versions**: `mppx` exact `0.6.31` (across `core`, `client`, `mcp`),
-  `@stellar/stellar-sdk` exact `15.1.0` (workspace-wide `pnpm.overrides`) — see each package's
-  `package.json`.
+  `@stellar/stellar-sdk` exact `16.2.0` (workspace-wide `pnpm.overrides`) — see each package's
+  `package.json`. Bumped from `15.1.0` on 2026-08-03: live Stellar testnet emits a Soroban
+  credentials XDR variant (`SorobanCredentialsType` value 2) that `15.1.0`'s bundled XDR
+  can't parse; `16.2.0` knows it. `@stellar/mpp@0.7.1`'s own peer range (`^15.1.0`) is
+  satisfied against the override without a hard failure — accepted deliberately (see
+  `docs/modules/core.md`'s "stellar-sdk version" section for the full evidence).
 - **Testnet smoke script included, run with `pnpm smoke`** (`scripts/smoke.ts`) — drives one
-  real x402 payment and one real mpp-charge payment against live testnet infrastructure. It has
-  not been run end-to-end as part of this submission; run it yourself before a demo (see
-  `.env.example` for the required vars).
+  real x402 payment and one real mpp-charge payment against live testnet infrastructure.
+  **Both legs verified PASS against live testnet on 2026-08-03** (post `@stellar/stellar-sdk`
+  16.2.0 upgrade above); confirmed wire shapes for the x402 settle response and the mpp
+  `Payment-Receipt` header are recorded in `docs/modules/core.md`.
 - **Not yet published to npm.** All seven packages build and test from source in this
   monorepo. See [PUBLISHING.md](./PUBLISHING.md) for the exact steps to publish under the
   `@stellarpay` scope.
