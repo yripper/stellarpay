@@ -117,7 +117,7 @@ describe("x402 end-to-end (mocked settlement)", () => {
     expect(receipt?.amount).toBe("0.01");
     expect(receipt?.asset).toBe("USDC");
     // Settlement fields are read straight off the (mocked) facilitator's /settle response body —
-    // see packages/core/src/schemes/x402.ts:45-48.
+    // see packages/core/src/schemes/x402.ts:64-66.
     expect(receipt?.txHash).toBe(FAKE_TX_HASH);
     expect(receipt?.payer).toBe(payerAddress);
     const raw = JSON.parse(receipt?.raw ?? "{}") as Record<string, unknown>;

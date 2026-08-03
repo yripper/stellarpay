@@ -2,7 +2,7 @@ import { Mppx, Store } from "mppx/server";
 import { close, getChannelState, stellar, watchChannel } from "@stellar/mpp/channel/server";
 import { USDC_SAC_TESTNET } from "@stellar/mpp";
 import { StrKey } from "@stellar/stellar-sdk";
-import { dollarToDecimal, NETWORKS } from "@stellarpay/shared";
+import { dollarToDecimal, NETWORKS } from "../internal/index.js";
 import type { Receipt, RouteRule, SchemeModule, SchemeOutcome, StellarpayConfig } from "../types.js";
 
 /** Re-exported for ops tooling (settlement scripts, dispute monitors) — see `@stellar/mpp/channel/server`. */

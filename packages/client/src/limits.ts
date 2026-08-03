@@ -1,4 +1,4 @@
-import { dollarToDecimal, decimalToBaseUnits } from "@stellarpay/shared";
+import { dollarToDecimal, decimalToBaseUnits } from "@stellarpay/core";
 import type { PayEvent } from "./events.js";
 
 /** Thrown by `SpendTracker.checkAndReserve` when a payment would exceed a configured spend limit. */

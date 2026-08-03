@@ -2,7 +2,7 @@ import { Mppx, Store } from "mppx/server";
 import { stellar } from "@stellar/mpp/charge/server";
 import { USDC_SAC_TESTNET } from "@stellar/mpp";
 import { Keypair } from "@stellar/stellar-sdk";
-import { dollarToDecimal, NETWORKS } from "@stellarpay/shared";
+import { dollarToDecimal, NETWORKS } from "../internal/index.js";
 import type { Receipt, RouteRule, SchemeModule, SchemeOutcome, StellarpayConfig } from "../types.js";
 
 function amountFor(rule: RouteRule): { amount: string; asset: string } {

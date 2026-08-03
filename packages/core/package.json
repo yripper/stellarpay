@@ -21,8 +21,7 @@
   "dependencies": {
     "@stellar/mpp": "^0.7.1",
     "@stellar/stellar-sdk": "16.2.0",
-    "@stellarpay/shared": "workspace:*",
-    "@x402/core": "^2.20.0",
+    "@x402/core": "~2.20.0",
     "@x402/stellar": "^2.20.0",
     "mppx": "0.6.31",
     "zod": "^4"

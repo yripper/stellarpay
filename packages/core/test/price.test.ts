@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { dollarToDecimal, decimalToBaseUnits, InvalidPriceError } from "../src/index.js";
+import { dollarToDecimal, decimalToBaseUnits, InvalidPriceError } from "../src/internal/price.js";
 
 describe("dollarToDecimal", () => {
   it("parses dollar strings", () => expect(dollarToDecimal("$0.01")).toBe("0.01"));

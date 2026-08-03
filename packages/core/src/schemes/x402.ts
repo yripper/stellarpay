@@ -1,6 +1,6 @@
 import { x402ResourceServer, x402HTTPResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactStellarScheme } from "@x402/stellar/exact/server";
-import { NETWORKS, dollarToDecimal } from "@stellarpay/shared";
+import { NETWORKS, dollarToDecimal } from "../internal/index.js";
 import { webAdapter } from "./webAdapter.js";
 import type { Receipt, SchemeModule, SchemeOutcome, StellarpayConfig } from "../types.js";
 

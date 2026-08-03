@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { NETWORKS, dollarToDecimal } from "@stellarpay/shared";
+import { NETWORKS, dollarToDecimal } from "./internal/index.js";
 import type { NetworkId, Receipt, RouteRule, StellarpayConfig } from "./types.js";
 import { StellarpayConfigError } from "./types.js";
 
@@ -18,7 +18,7 @@ const BASE_UNITS_PATTERN = /^\d+$/;
 const SCHEMES = ["x402", "mpp-charge", "mpp-channel"] as const;
 
 // Single source of truth for which network ids are accepted: derived from
-// `@stellarpay/shared`'s NETWORKS presets rather than duplicating the list.
+// `./internal/networks.js`'s NETWORKS presets rather than duplicating the list.
 const NETWORK_IDS = Object.keys(NETWORKS) as [NetworkId, ...NetworkId[]];
 
 const networkSchema = z.enum(NETWORK_IDS);

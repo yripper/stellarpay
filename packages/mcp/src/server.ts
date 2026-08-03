@@ -2,7 +2,7 @@ import { Mppx, Store, Transport } from "mppx/server";
 import { stellar } from "@stellar/mpp/charge/server";
 import { USDC_SAC_TESTNET } from "@stellar/mpp";
 import { Keypair } from "@stellar/stellar-sdk";
-import { dollarToDecimal } from "@stellarpay/shared";
+import { dollarToDecimal } from "@stellarpay/core";
 
 /**
  * Input shape mppx's `Transport.mcpSdk()` hands to every route handler: the MCP SDK tool

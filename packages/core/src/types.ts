@@ -3,10 +3,10 @@
  * compiles against these exact names, field names, and optionality — treat
  * this file as a contract, not an implementation detail.
  *
- * `NetworkId` is intentionally re-declared here (rather than imported from
- * `@stellarpay/shared`) so this package's public `.d.ts` never references
- * `@stellarpay/shared` types; `@stellarpay/shared` is a private, bundled
- * dependency and must not leak into `@stellarpay/core`'s public API surface.
+ * `NetworkId` is declared here as this package's single source of truth;
+ * `./internal/networks.ts` (the `NETWORKS` presets, re-exported as a plain
+ * utility from `index.ts`) imports it from here rather than redeclaring it,
+ * so this file has no dependency of its own to keep clean.
  */
 
 /** Stellar network the SDK is configured to operate against. */

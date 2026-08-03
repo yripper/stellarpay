@@ -97,10 +97,15 @@ flowchart TB
     PaidClient -- "-32042 challenge → pay → retry" --> ToolGuard
 ```
 
-`@stellarpay/mcp` deliberately does **not** route through `@stellarpay/core`: MCP payments are
-in-protocol MPP over `mppx`'s `Transport.mcpSdk()`, not HTTP-level x402 — an approved deviation
-from the original spec sketch (see `docs/superpowers/specs/2026-07-31-stellarpay-design.md` §6
-and `packages/mcp/package.json`, which has no `@stellarpay/core` dependency).
+`@stellarpay/mcp` deliberately does **not** route through `@stellarpay/core`'s `stellarpay()`
+orchestrator or HTTP-level `parseConfig`/routing: MCP payments are in-protocol MPP over `mppx`'s
+`Transport.mcpSdk()`, not HTTP-level x402 — an approved deviation from the original spec sketch
+(see `docs/superpowers/specs/2026-07-31-stellarpay-design.md` §6). `packages/mcp/package.json`
+does depend on `@stellarpay/core`, but only for its `dollarToDecimal` price-conversion utility
+— that helper (along with `decimalToBaseUnits`/`NETWORKS`) moved out of the private
+`@stellarpay/shared` package into `@stellarpay/core`'s public utility exports so the
+publishable packages that need it don't depend on an unpublishable package at runtime (see
+[Status & known facts](#status--known-facts)).
 
 ## Packages
 
@@ -112,7 +117,7 @@ and `packages/mcp/package.json`, which has no `@stellarpay/core` dependency).
 | `@stellarpay/fastify` | not yet published | One-line Fastify plugin adapter | [packages/fastify](./packages/fastify/README.md) |
 | `@stellarpay/client` | not yet published | `createPayingFetch()` — auto-pays any 402 (x402 or MPP), with spend limits | [packages/client](./packages/client/README.md) |
 | `@stellarpay/mcp` | not yet published | Per-tool-call payments for MCP servers (`toolPayments`) + a paying MCP client wrapper | [packages/mcp](./packages/mcp/README.md) |
-| `@stellarpay/shared` | private, unpublished | Internal: network presets, price helpers, OZ Channels submission | [packages/shared](./packages/shared/README.md) |
+| `@stellarpay/shared` | private, unpublished | Internal, dead-until-Plan-B: OZ Channels submission (`submitViaChannels`); re-exports network presets/price helpers from `@stellarpay/core` for backward compatibility | [packages/shared](./packages/shared/README.md) |
 
 Publishing is in progress under the `@stellarpay` npm scope — see [PUBLISHING.md](./PUBLISHING.md).
 
@@ -203,8 +208,13 @@ calls.
 - **Not yet published to npm.** All seven packages build and test from source in this
   monorepo. See [PUBLISHING.md](./PUBLISHING.md) for the exact steps to publish under the
   `@stellarpay` scope.
-- **`@stellarpay/shared` is private** and intentionally never published — it's an internal,
-  bundled dependency of the other packages.
+- **`@stellarpay/shared` is private** and intentionally never published. It is not a runtime
+  dependency of any publishable package: the network-preset and price-conversion utilities it
+  used to hold now live in `@stellarpay/core`'s public exports (see the Architecture section
+  above), so the six publishable packages never depend on this package at all. `shared` itself
+  keeps only `submitViaChannels` (OZ Channels submission) — currently dead code, unused until
+  a Plan B demo/ops script calls it — plus a backward-compatible re-export of the moved
+  network/price utilities from `@stellarpay/core`.
 
 ## Testing
 

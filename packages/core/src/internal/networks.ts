@@ -1,4 +1,4 @@
-export type NetworkId = "stellar:testnet" | "stellar:pubnet";
+import type { NetworkId } from "../types.js";
 
 export interface NetworkPreset {
   networkId: NetworkId;

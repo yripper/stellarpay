@@ -53,11 +53,11 @@ importers:
       '@stellar/stellar-sdk':
         specifier: 16.2.0
         version: 16.2.0
-      '@stellarpay/shared':
+      '@stellarpay/core':
         specifier: workspace:*
-        version: link:../shared
+        version: link:../core
       '@x402/core':
-        specifier: ^2.20.0
+        specifier: ~2.20.0
         version: 2.20.0
       '@x402/fetch':
         specifier: ^2.20.0
@@ -68,10 +68,6 @@ importers:
       mppx:
         specifier: 0.6.31
         version: 0.6.31(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(express@5.2.1)(hono@4.12.33)(typescript@5.9.3)(viem@2.55.10(typescript@5.9.3)(zod@4.4.3))
-    devDependencies:
-      '@stellarpay/core':
-        specifier: workspace:*
-        version: link:../core
 
   packages/core:
     dependencies:
@@ -81,11 +77,8 @@ importers:
       '@stellar/stellar-sdk':
         specifier: 16.2.0
         version: 16.2.0
-      '@stellarpay/shared':
-        specifier: workspace:*
-        version: link:../shared
       '@x402/core':
-        specifier: ^2.20.0
+        specifier: ~2.20.0
         version: 2.20.0
       '@x402/stellar':
         specifier: ^2.20.0
@@ -153,9 +146,9 @@ importers:
       '@stellar/stellar-sdk':
         specifier: 16.2.0
         version: 16.2.0
-      '@stellarpay/shared':
+      '@stellarpay/core':
         specifier: workspace:*
-        version: link:../shared
+        version: link:../core
       mppx:
         specifier: 0.6.31
         version: 0.6.31(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(express@5.2.1)(hono@4.12.33)(typescript@5.9.3)(viem@2.55.10(typescript@5.9.3)(zod@4.4.3))
@@ -172,6 +165,9 @@ importers:
       '@stellar/stellar-sdk':
         specifier: 16.2.0
         version: 16.2.0
+      '@stellarpay/core':
+        specifier: workspace:*
+        version: link:../core
 
 packages:
 

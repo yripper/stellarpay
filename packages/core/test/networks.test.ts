@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { NETWORKS } from "../src/index.js";
+import { NETWORKS } from "../src/internal/networks.js";
 
 describe("NETWORKS", () => {
   it("testnet preset", () => {
