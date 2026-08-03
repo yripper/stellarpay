@@ -23,7 +23,8 @@ const paywall = stellarpay({
   sponsorSecret: process.env.SPONSOR_SECRET!,     // required: /summarize sets sponsorGas
   channel: {                                      // required: /ticks uses mpp-channel
     contract: "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
-    commitmentPublicKey: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+    commitmentPublicKey: "19c83c5230bddcdd492f8a301016abd839163e034ec4818b01d31fbcae3a3cde",
+    // 64-hex ed25519 commitment key (raw public key bytes, not a G... address)
   },
   routes: {
     "GET /weather":    { price: "$0.001" },                          // x402 (default)
@@ -38,7 +39,7 @@ const paywall = stellarpay({
 This is the config example from the design spec (§3), adapted to be valid against the real
 `parseConfig` — `mppSecretKey`, `sponsorSecret`, and `channel` are required once a route
 declares `mpp-charge`, `sponsorGas`, or `mpp-channel` respectively
-(`packages/core/src/config.ts:93-113`). `facilitatorApiKey` isn't required by `parseConfig`
+(`packages/core/src/config.ts:99-119`). `facilitatorApiKey` isn't required by `parseConfig`
 itself, but the OZ testnet facilitator's `/verify`, `/settle`, and `/supported` endpoints all
 require `Authorization: Bearer <key>` — omit it and the x402 route above 401s against the live
 facilitator. Verified by running the full config through `parseConfig` directly.

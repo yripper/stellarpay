@@ -75,4 +75,24 @@ describe("parseConfig", () => {
     const c = parseConfig({ ...valid, network: "stellar:pubnet" });
     expect(c.network).toBe("stellar:pubnet");
   });
+
+  it("rejects a G-strkey commitmentPublicKey (must be raw hex, not a Stellar address)", () =>
+    expect(() =>
+      parseConfig({
+        ...valid,
+        mppSecretKey: "s",
+        channel: { contract: "C".padEnd(56, "A"), commitmentPublicKey: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5" },
+        routes: { "GET /a": { price: "$1", scheme: "mpp-channel" } },
+      }),
+    ).toThrow(StellarpayConfigError));
+
+  it("accepts a 64-hex commitmentPublicKey", () => {
+    const c = parseConfig({
+      ...valid,
+      mppSecretKey: "s",
+      channel: { contract: "C".padEnd(56, "A"), commitmentPublicKey: "ab".repeat(32) },
+      routes: { "GET /a": { price: "$1", scheme: "mpp-channel" } },
+    });
+    expect(c.channel?.commitmentPublicKey).toBe("ab".repeat(32));
+  });
 });

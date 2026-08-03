@@ -60,12 +60,23 @@ Public exports, from `src/index.ts`.
 | `PriceInput` (type) | `string \| { asset: string; amount: string }` | A dollar string (`"$0.01"`) or explicit asset + base units. |
 | `RouteRule` (type) | `{ price, scheme?, sponsorGas?, description? }` | Per-route config. |
 | `Receipt` (type) | `{ scheme, route, network, amount, asset, payer?, txHash?, raw?, timestamp }` | Normalized settlement receipt passed to `onPayment`. |
-| `StellarpayConfig` (type) | `{ network, payTo, routes, facilitatorUrl?, mppSecretKey?, sponsorSecret?, channel?, rpcUrl?, onPayment? }` | Top-level SDK config. |
+| `StellarpayConfig` (type) | `{ network, payTo, routes, facilitatorUrl?, facilitatorApiKey?, mppSecretKey?, sponsorSecret?, channel?, rpcUrl?, onPayment? }` | Top-level SDK config. `facilitatorApiKey` is the bearer token for the x402 facilitator's `verify`/`settle`/`supported` endpoints (semi-sensitive — never logged). |
 | `StellarpayConfigError` | `class extends Error` | Thrown by `parseConfig` on invalid input. |
 
 Field-level requirements: `mppSecretKey` is required if any route uses an `mpp-*` scheme,
 `sponsorSecret` if any route sets `sponsorGas`, and `channel` if any route uses `mpp-channel`
 (`src/config.ts`).
+
+`channel.commitmentPublicKey` must be a 64-character hex string — the raw ed25519 public key
+bytes, not a Stellar `G...` address; `parseConfig` rejects anything else.
+
+**`mpp-charge`/`mpp-channel` routes are pinned to testnet USDC** (`USDC_SAC_TESTNET`) and are
+rejected by `parseConfig` when `network` is `"stellar:pubnet"` — mainnet support for those
+schemes isn't implemented yet, only `x402` currently works against `"stellar:pubnet"`.
+
+If your own `onPayment` hook throws, `stellarpay()` catches it, logs the real error server-side
+only (`console.error`), and still lets the already-successful request through — don't put
+secrets in your hook's own error messages, since they're logged verbatim.
 
 Full API surface, gotchas, and file:line citations: [`docs/modules/core.md`](../../docs/modules/core.md).
 

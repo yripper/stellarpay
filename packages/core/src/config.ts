@@ -15,6 +15,9 @@ const ASSET_PATTERN = /^C[A-Z2-7]{55}$/;
 /** Base-unit amounts are non-negative integer strings. */
 const BASE_UNITS_PATTERN = /^\d+$/;
 
+/** Raw ed25519 public key, hex-encoded (32 bytes): what `mppChannel.ts` decodes via `Buffer.from(..., "hex")`, not a G... strkey. */
+const COMMITMENT_KEY_PATTERN = /^[0-9a-fA-F]{64}$/;
+
 const SCHEMES = ["x402", "mpp-charge", "mpp-channel"] as const;
 const MPP_SCHEMES = ["mpp-charge", "mpp-channel"] as const;
 
@@ -59,7 +62,9 @@ const routeKeySchema = z.string().regex(ROUTE_KEY_PATTERN, 'route key must look 
 const channelSchema = z
   .object({
     contract: z.string(),
-    commitmentPublicKey: z.string(),
+    commitmentPublicKey: z
+      .string()
+      .regex(COMMITMENT_KEY_PATTERN, "commitmentPublicKey must be a 64-character hex string (raw ed25519 public key bytes) — not a G... Stellar address"),
   })
   .strict();
 
