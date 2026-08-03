@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { toolPayments } from "../src/index.js";
 
 const payments = toolPayments({
-  recipient: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+  payTo: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
   network: "stellar:testnet", mppSecretKey: "test-secret",
   prices: { deep_report: "$0.02" },
 });

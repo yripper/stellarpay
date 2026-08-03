@@ -25,7 +25,7 @@ Taken directly from `test/mcp.test.ts`:
 import { toolPayments } from "@stellarpay/mcp";
 
 const payments = toolPayments({
-  recipient: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+  payTo: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
   network: "stellar:testnet",
   mppSecretKey: "test-secret",
   prices: { deep_report: "$0.02" }, // tools not listed here are unpriced (free)
@@ -74,12 +74,16 @@ Public exports, from `src/index.ts` (`export * from "./server.js"` + `"./client.
 | Export | Signature | Description |
 |---|---|---|
 | `toolPayments` | `(config: ToolPaymentsConfig) => ToolPayments` | Server-side entry point. |
-| `ToolPaymentsConfig` (type) | `{ recipient, network, mppSecretKey, sponsorSecret?, rpcUrl?, prices, onPayment? }` | `prices: Record<string, string>` maps tool name → dollar price (e.g. `"$0.02"`); tools absent here are unpriced. |
+| `ToolPaymentsConfig` (type) | `{ payTo, network, mppSecretKey, sponsorSecret?, rpcUrl?, prices, onPayment? }` | `prices: Record<string, string>` maps tool name → dollar price (e.g. `"$0.02"`); tools absent here are unpriced. |
 | `ToolPayments` (type) | `{ guard, priceOf }` | `guard<A, R>(toolName, handler)` wraps a handler with the payment check — unpriced tools are returned unwrapped. `priceOf(toolName)` looks up the configured price. |
 | `ToolPaymentReceipt` (type) | `{ tool, amount, raw?, timestamp }` | Passed to `ToolPaymentsConfig.onPayment` once a charge is accepted. |
 | `wrapPaidMcpClient` | `<const client extends Pick<Client, "callTool">>(client, opts: PaidMcpClientOptions) => WrappedClient` | Client-side entry point: wraps an MCP SDK `Client` so `callTool` auto-pays `-32042` challenges via `@stellar/mpp`'s `stellar.charge` client method. |
 | `PaidMcpClientOptions` (type) | `{ secret, network, rpcUrl? }` | `network` is accepted for interface parity but not yet wired into the underlying client call — see the module doc. |
 | `payingHttpTransport` | `(url: string, payFetch: typeof fetch) => StreamableHTTPClientTransport` | Builds an MCP SDK Streamable HTTP transport whose requests go through a paying `fetch` — for HTTP-level (x402-gated) MCP servers, distinct from the `-32042` JSON-RPC challenges `wrapPaidMcpClient` pays. |
+
+If your own `onPayment` hook throws, `guard` catches it, logs the real error server-side only
+(`console.error`), and still returns the already-paid tool result — don't put secrets in your
+hook's own error messages, since they're logged verbatim.
 
 Full API surface, gotchas (single-process replay-store caveat, the `currency` fixed to testnet
 USDC, etc.), and file:line citations: [`docs/modules/mcp.md`](../../docs/modules/mcp.md).

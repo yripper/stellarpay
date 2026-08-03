@@ -31,7 +31,7 @@ not a new payment protocol.
 
 - `type ToolPaymentReceipt` (`server.ts:30-39`) — `{ tool, amount, raw?, timestamp }`,
   the shape passed to `ToolPaymentsConfig.onPayment`.
-- `type ToolPaymentsConfig` (`server.ts:42-57`) — `recipient`, `network:
+- `type ToolPaymentsConfig` (`server.ts:42-57`) — `payTo`, `network:
   "stellar:testnet" | "stellar:pubnet"`, `mppSecretKey`, `sponsorSecret?`, `rpcUrl?`,
   `prices: Record<string, string>` (tool name → `"$0.02"`-style dollar string),
   `onPayment?`.
@@ -70,7 +70,7 @@ their internal type plumbing.
   1. Looks up `config.prices[toolName]`; if unset, **returns `handler` unwrapped**
      (`server.ts:114`) — an unpriced tool never touches mppx at all, not merely "always
      succeeds."
-  2. Otherwise converts the price via `@stellarpay/shared`'s `dollarToDecimal`
+  2. Otherwise converts the price via `@stellarpay/core`'s `dollarToDecimal`
      (`server.ts:115`) and returns an async wrapper that:
      - Calls `payment.charge({ amount, description })(extra as McpToolExtra)`
        (`server.ts:121`) — the single explicit cast from the guard's public `extra:
@@ -102,9 +102,13 @@ their internal type plumbing.
   emits a Soroban credentials XDR variant `15.1.0` can't parse, see `docs/modules/core.md`'s
   "stellar-sdk version" section) — `Keypair.fromSecret` for the optional `sponsorSecret`
   fee-payer.
-- `@stellarpay/shared` (workspace) — `dollarToDecimal`, used internally in `server.ts`
-  only; never appears in a public type signature (`ToolPaymentsConfig.prices` and
-  `ToolPaymentReceipt.amount` are plain `string`/`Record<string, string>`).
+- `@stellarpay/core` (workspace, runtime dependency) — `dollarToDecimal`, a plain utility
+  export used internally in `server.ts` only; never appears in a public type signature
+  (`ToolPaymentsConfig.prices` and `ToolPaymentReceipt.amount` are plain
+  `string`/`Record<string, string>`). This package does not call `stellarpay()` or
+  `parseConfig` — see the Purpose section above and the root README's Architecture
+  section for why this doesn't contradict "`@stellarpay/mcp` doesn't route through
+  `@stellarpay/core`'s orchestrator."
 - `@modelcontextprotocol/sdk` — **peerDependency** (`>=1.25.0`, matching mppx's own peer
   spec, `mppx/package.json`'s `peerDependencies`), dev-installed (`^1.30.0`) for
   typechecking/tests. `client.ts` imports `Client` (type-only) and
@@ -211,10 +215,10 @@ their internal type plumbing.
   parameters — reserved for interface parity / a future network-aware client leg (e.g.
   `mpp-channel`), not functional today.
 - **`toolPayments` builds exactly one `stellar.charge` method for every priced tool.**
-  All tools configured in `prices` share the same `recipient`/`network`/`rpcUrl`/
+  All tools configured in `prices` share the same `payTo`/`network`/`rpcUrl`/
   `sponsorSecret` — there is no per-tool method configuration in the brief's contract.
   A deployment needing different recipients per tool would need multiple `toolPayments(...)`
-  instances (one per distinct recipient), each wrapping its own subset of tools.
+  instances (one per distinct `payTo`), each wrapping its own subset of tools.
 - **`@modelcontextprotocol/sdk` is a peer, not a bundled, dependency — and is required at
   runtime for the 402 path even though `server.ts` never imports it.** Omitting it from a
   consuming app's own dependencies makes every priced-tool 402 throw mppx's own "Missing
@@ -248,5 +252,13 @@ their internal type plumbing.
   `@stellar/mpp@0.7.1`, `@modelcontextprotocol/sdk@1.30.0`) — not just the `.d.ts`, which
   doesn't show the dynamic-import fallback or the challenge/receipt construction logic.
 - All 4 mcp-package tests (2 files) pass; `pnpm --filter @stellarpay/mcp typecheck`/`build`
-  both exit 0 with zero diagnostics; root suite (18 files / 76 tests) passes; root
+  both exit 0 with zero diagnostics; root suite (19 files / 88 tests) passes; root
   `typecheck`/`build` succeed across all 7 packages.
+- 2026-08-03 (final fix wave): `recipient` renamed to `payTo` on `ToolPaymentsConfig` for
+  cross-package naming consistency with `@stellarpay/core`'s `StellarpayConfig.payTo`;
+  `dollarToDecimal` import switched from `@stellarpay/shared` to the now-public
+  `@stellarpay/core` export (`server.ts`'s own line numbers are unchanged — both were
+  same-line swaps). `mcp` package test count unchanged (4 tests, 2 files); root suite grew
+  to 19 files / 88 tests from `@stellarpay/core`'s moved-in `price.test.ts`/`networks.test.ts`
+  and new `config.test.ts` cases (see `docs/modules/core.md`), not from anything in this
+  package.

@@ -41,7 +41,7 @@ export type ToolPaymentReceipt = {
 /** Configuration consumed by {@link toolPayments}. */
 export type ToolPaymentsConfig = {
   /** Recipient Stellar public key (G…) or contract address (C…) for settled charges. */
-  recipient: string;
+  payTo: string;
   /** CAIP-2 network identifier the `stellar.charge` server method verifies against. */
   network: "stellar:testnet" | "stellar:pubnet";
   /** mppx server secret key, used to HMAC-bind issued challenges (`Mppx.create`'s `secretKey`). */
@@ -91,7 +91,7 @@ export function toolPayments(config: ToolPaymentsConfig): ToolPayments {
     transport: Transport.mcpSdk(),
     methods: [
       stellar.charge({
-        recipient: config.recipient,
+        recipient: config.payTo,
         // Fixed to testnet USDC regardless of `config.network`, matching
         // `@stellarpay/core`'s `createMppChargeModule` precedent
         // (`packages/core/src/schemes/mppCharge.ts:33`) — the brief's produced interface
