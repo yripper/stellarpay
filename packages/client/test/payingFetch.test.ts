@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { Keypair } from "@stellar/stellar-sdk";
 import { stellarpay } from "@stellarpay/core";
-import { createPayingFetch, SpendLimitExceeded } from "../src/index.js";
+import { createPayingFetch, SpendLimitExceeded, MissingSignerConfig } from "../src/index.js";
 
 const server = stellarpay({
   network: "stellar:testnet", payTo: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
@@ -112,6 +112,10 @@ describe("createPayingFetch (budget release on failed attempts)", () => {
     const second = await payFetch("http://svc/x402paid").catch((e: unknown) => e);
     expect(first).not.toBeInstanceOf(SpendLimitExceeded);
     expect(second).not.toBeInstanceOf(SpendLimitExceeded);
+    // Named error class (not a generic `Error`), so callers can distinguish "you forgot to
+    // configure a signer" from every other failure mode without string-matching a message.
+    expect(first).toBeInstanceOf(MissingSignerConfig);
+    expect(second).toBeInstanceOf(MissingSignerConfig);
   });
 
   it("SpendTracker.release is a no-op for an undefined (never-reserved) amount", async () => {

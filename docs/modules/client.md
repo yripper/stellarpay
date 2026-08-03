@@ -28,25 +28,29 @@ throughout so a host app can log/observe payment activity.
   `"challenge"`, `"paying"`, `"paid"`, `"blocked"`, `"error"`.
 - `class SpendLimitExceeded extends Error` — thrown by `SpendTracker.checkAndReserve`
   (`packages/client/src/limits.ts:5`).
-- `class UnsupportedChallenge extends Error` — thrown for a 402 whose protocol
-  `detectProtocol` can't classify beyond `"x402"`/`"mpp"` today (`packages/client/src/index.ts:14`);
-  reserved for a future third protocol — neither leg throws it currently.
-- `type PayingFetchConfig` (`packages/client/src/index.ts:17-39`):
+- `class UnsupportedChallenge extends Error` — reserved, currently never thrown: intended
+  for a 402 whose protocol `detectProtocol` can't classify beyond `"x402"`/`"mpp"`
+  (`packages/client/src/index.ts:14`), but today `detectProtocol`'s `undefined` case is
+  handled by passing the probe response through untouched (`index.ts:113`), not by
+  throwing this — it exists for a future third protocol, neither leg throws it.
+- `class MissingSignerConfig extends Error` — thrown by `resolveSecret` (`index.ts:59-63`)
+  when a `PayingFetchConfig` has neither `secret` nor a `Keypair`-typed `keypair`.
+- `type PayingFetchConfig` (`packages/client/src/index.ts:20-42`):
   - `secret?: string` / `keypair?: unknown` — one required; `keypair` is narrowed internally
-    via `instanceof Keypair` (`index.ts:58`).
+    via `instanceof Keypair` (`index.ts:61`).
   - `network: "stellar:testnet" | "stellar:pubnet"`
   - `limits?: { maxPerCall?: string; maxTotal?: string; allowUnknownAmount?: boolean }` — `"$0.05"`-style strings.
   - `onEvent?: (e: PayEvent) => void`
   - `rpcUrl?: string`
-  - `channelCommitmentSecret?: string` (`index.ts:26-28`) — enables the `mpp-channel`
+  - `channelCommitmentSecret?: string` (`index.ts:29-31`) — enables the `mpp-channel`
     client method; omitted → only `mpp-charge` is registered for MPP challenges.
-  - `allowedChannels?: string[]` (`index.ts:29-38`) — channel contract IDs (C...) to pin
+  - `allowedChannels?: string[]` (`index.ts:32-41`) — channel contract IDs (C...) to pin
     the channel client to, when `channelCommitmentSecret` is set. Recommended: the
     underlying `@stellar/mpp` channel client refuses to construct at all without either
     this or an explicit unpinned opt-in (see Gotchas) — omitted, `createMppLeg` falls back
     to the unpinned opt-in automatically rather than let construction fail.
 - `function createPayingFetch(config: PayingFetchConfig): typeof fetch`
-  (`packages/client/src/index.ts:97-147`) — the package's sole public function.
+  (`packages/client/src/index.ts:100-150`) — the package's sole public function.
 
 ### Internal (not exported from `index.ts`)
 
@@ -64,19 +68,19 @@ Tests import internals directly from `src/*.ts`.
 
 ## Key Methods (`file:line`)
 
-- `createPayingFetch` (`index.ts:97-147`) — probes via `_baseFetch ?? fetch`
-  (`index.ts:99,106`, the `_baseFetch` test seam is never part of `PayingFetchConfig`, only
-  `InternalPayingFetchConfig`, `index.ts:47-53`); non-402 or undetectable-protocol
-  responses pass through untouched (`index.ts:107,110`); emits `"challenge"`
-  (`index.ts:112`); for `"mpp"`, lazily builds (and caches) a single `createMppLeg`
+- `createPayingFetch` (`index.ts:100-150`) — probes via `_baseFetch ?? fetch`
+  (`index.ts:102,109`, the `_baseFetch` test seam is never part of `PayingFetchConfig`, only
+  `InternalPayingFetchConfig`, `index.ts:50-56`); non-402 or undetectable-protocol
+  responses pass through untouched (`index.ts:110,113`); emits `"challenge"`
+  (`index.ts:115`); for `"mpp"`, lazily builds (and caches) a single `createMppLeg`
   instance per `payingFetch` closure and delegates the *original* request to
-  `mppLeg.fetch` — which re-probes and pays (`index.ts:118-129`); for `"x402"`, parses
+  `mppLeg.fetch` — which re-probes and pays (`index.ts:121-132`); for `"x402"`, parses
   the amount, calls `tracker.checkAndReserve`, then builds and calls the x402 leg
-  (`index.ts:132-145`).
-- `resolveSecret(config)` (`index.ts:56-60`) — narrows `secret`/`keypair` to a raw seed;
+  (`index.ts:135-148`).
+- `resolveSecret(config)` (`index.ts:59-63`) — narrows `secret`/`keypair` to a raw seed;
   shared by both legs (the mpp leg's `secret` field, `mppLeg.ts:13`, is always this
   function's output — never resolved independently).
-- `parseX402Amount(res)` (`index.ts:73-84`) — `PAYMENT-REQUIRED` header → base64 → JSON →
+- `parseX402Amount(res)` (`index.ts:76-87`) — `PAYMENT-REQUIRED` header → base64 → JSON →
   `accepts[0].amount`; already atomic base units on the wire (Task 13 finding), so a plain
   `BigInt(amount)`, not `dollarToDecimal`/`decimalToBaseUnits`.
 - `createMppLeg(config)` (`mppLeg.ts:76-165`) — `Mppx.create({ polyfill: false, fetch:
@@ -107,15 +111,17 @@ Tests import internals directly from `src/*.ts`.
 ## Dependencies
 
 - `@stellar/stellar-sdk` — `Keypair`.
-- `@stellarpay/shared` (workspace, private/bundled) — `dollarToDecimal`, `decimalToBaseUnits`
-  (used only by `SpendTracker`'s `maxPerCall`/`maxTotal` conversion — never for parsing an
-  on-wire challenge amount, which is already atomic on both legs).
-- `@x402/core`, `@x402/fetch`, `@x402/stellar` — the x402 leg.
+- `@stellarpay/core` (workspace, **runtime** dependency — moved off `@stellarpay/shared` in
+  the final fix wave, 2026-08-03) — `dollarToDecimal`, `decimalToBaseUnits`, plain utility
+  exports (used only by `SpendTracker`'s `maxPerCall`/`maxTotal` conversion — never for
+  parsing an on-wire challenge amount, which is already atomic on both legs).
+  `test/payingFetch.test.ts` separately builds a real in-process `stellarpay()` server against
+  the same dependency, as a fetch endpoint to generate real MPP challenges.
+- `@x402/core` (pinned `~2.20.0`, not `^` — a looser range risks a second, incompatible copy
+  resolving alongside `@stellarpay/core`'s own `@x402/core` dependency, breaking `instanceof`
+  checks across the two installed copies), `@x402/fetch`, `@x402/stellar` — the x402 leg.
 - `mppx`, `@stellar/mpp` — the MPP leg (`mppx/client`, `@stellar/mpp/charge/client`,
   `@stellar/mpp/channel/client`). Pinned `mppx@0.6.31` exact (controller ruling, `progress.md`).
-- `@stellarpay/core` (devDependency only — **not** a runtime dependency) — `test/payingFetch.test.ts`
-  builds a real in-process `stellarpay()` server as a fetch endpoint to generate real MPP
-  challenges; `createPayingFetch` itself never imports `@stellarpay/core`.
 
 ## Gotchas & Invariants
 
@@ -124,11 +130,19 @@ Tests import internals directly from `src/*.ts`.
   permanently consume `maxTotal` (this was a carried-forward finding from Task 13's
   review: the original x402-only flow reserved unconditionally with no rollback). The fix
   keeps "reserve before signing" for the success path but adds `SpendTracker.release` on
-  every failure path: the x402 leg's `catch` block (`index.ts:141-145`) and the mpp leg's
+  every failure path: the x402 leg's `catch` block (`index.ts:144-148`) and the mpp leg's
   `onPaymentFailed` handler (`mppLeg.ts:158-162`, via `popReservation`, `mppLeg.ts:97-102`).
   A reservation that never landed (blocked by `checkAndReserve` itself, or an unknown
   amount under `allowUnknownAmount`) has nothing to release — `release(undefined)` and "no
   stack entry" are both no-ops.
+- **`limits.allowUnknownAmount: true` disables `maxPerCall` AND `maxTotal` for a
+  challenge whose amount can't be parsed, not just the unparseable-amount block.**
+  `SpendTracker.checkAndReserve` (`limits.ts:39-52`) returns immediately when
+  `baseUnits === undefined` and `allowUnknownAmount` is set — it never reaches the
+  `maxPerCall`/`maxTotal` comparisons below it, and never adds anything to
+  `cumulativeBaseUnits`. This is a real gap, not a rounding-to-zero: an unparseable
+  challenge under this flag pays through with no cap enforced at all. Only enable it
+  against endpoints you trust.
 - **Reservation tracking is best-effort under a `challenge.id` collision, not fully
   isolated — only the sequential (non-concurrent) path is test-proven.** A prior version
   of this doc overstated this: it described a single-entry-per-id map as isolating
@@ -191,7 +205,7 @@ Tests import internals directly from `src/*.ts`.
   `dollarToDecimal`/`decimalToBaseUnits` (that pair converts *limit* strings like
   `"$0.05"`, a different unit-conversion direction).
 - **`"challenge"` fires twice per MPP attempt.** `index.ts`'s top-level probe emits
-  `"challenge"` once it detects the protocol (`index.ts:112`, shared with the x402 path),
+  `"challenge"` once it detects the protocol (`index.ts:115`, shared with the x402 path),
   then delegates the *original* request to `mppLeg.fetch`, which independently re-probes
   and hits its own 402 — its `onChallengeReceived` handler emits `"challenge"` again
   (`mppLeg.ts:146`). This mirrors the x402 leg's already-accepted "one extra request"
@@ -207,8 +221,10 @@ Tests import internals directly from `src/*.ts`.
 - **`InternalPayingFetchConfig`'s `_baseFetch`/`_dryRun` are not part of the public
   contract.** They exist only so this package's own tests can inject a transport and stop
   before RPC; `test/payingFetch.test.ts` reaches them via an `as never` cast, matching the
-  brief's own test code. `channelCommitmentSecret` is different — it *is* public, added to
-  `PayingFetchConfig` itself.
+  brief's own test code. `channelCommitmentSecret` is different — it is part of the public
+  config surface (a documented field on `PayingFetchConfig` itself), not a test seam. The
+  *value* it holds is still a secret (an ed25519 secret key, S...) — never log it, same
+  handling as `secret`/`mppSecretKey`/`sponsorSecret` elsewhere in this SDK.
 - **`SpendTracker` is shared between both legs within one `createPayingFetch` call.**
   `maxTotal` is enforced across x402 and MPP payments made through the *same*
   `payingFetch` instance, not per-protocol.
@@ -249,6 +265,13 @@ Tests import internals directly from `src/*.ts`.
   `onChallenge`-fallback behavior and the channel client's construction-time pinning
   check, the compiled `.js` (`mppx@0.6.31`, `@stellar/mpp@0.7.1`) under
   `packages/client/node_modules/` — not just the `.d.ts`, which doesn't show the throw.
-- All 17 client-package tests pass; typecheck and build succeed (`tsc` exit 0, zero
-  diagnostics); root suite (16 files / 72 tests) passes; root typecheck/build succeed
-  across all 6 packages.
+- 2026-08-03 (final fix wave): `@stellarpay/shared`'s `dollarToDecimal`/`decimalToBaseUnits`
+  swapped for the now-public `@stellarpay/core` equivalents, `@stellarpay/core` moved from
+  a devDependency to a real runtime `dependency`, `MissingSignerConfig` added and
+  line-numbers in `index.ts` recounted (uniformly shifted `+3` from its addition). All 17
+  client-package tests still pass — the `MissingSignerConfig` coverage is two added
+  `expect()` assertions inside the existing "misconfigured secret" test
+  (`payingFetch.test.ts`), not a new `it()`, so the test count is unchanged from before this
+  fix wave. Typecheck and build succeed (`tsc` exit 0, zero diagnostics); root suite (19
+  files / 88 tests) passes; root typecheck/build succeed across all 7 workspace packages
+  (`core`, `client`, `mcp`, `express`, `hono`, `fastify`, `shared`).

@@ -52,7 +52,14 @@ Public exports, from `src/index.ts`.
 | `PayingFetchConfig` (type) | `{ secret?, keypair?, network, limits?, onEvent?, rpcUrl?, channelCommitmentSecret?, allowedChannels? }` | `secret` or `keypair` is required (one of the two). `network: "stellar:testnet" \| "stellar:pubnet"`. `limits?: { maxPerCall?, maxTotal?, allowUnknownAmount? }` — dollar strings like `"$0.05"`. `channelCommitmentSecret` opts into the `mpp-channel` client method; `allowedChannels` pins it to specific channel contracts (recommended). |
 | `PayEvent` (type) | `{ type: "challenge" \| "paying" \| "paid"; protocol; url } \| { type: "blocked"; reason; url } \| { type: "error"; message; url }` | Lifecycle events delivered to `onEvent`. |
 | `SpendLimitExceeded` | `class extends Error` | Thrown by the spend-limit gate *before* any signing happens, when a challenge would exceed `maxPerCall`/`maxTotal`. |
-| `UnsupportedChallenge` | `class extends Error` | Reserved for a `402` whose protocol can't be classified as x402 or MPP. |
+| `MissingSignerConfig` | `class extends Error` | Thrown by `createPayingFetch` when a config has neither `secret` nor a valid `keypair`. |
+| `UnsupportedChallenge` | `class extends Error` | Reserved for a `402` whose protocol can't be classified as x402 or MPP — currently never thrown; both legs always resolve to `"x402"` or `"mpp"` today. |
+
+**`allowUnknownAmount: true` disables both spend caps for that challenge**, not just the
+unparseable-amount block: when a challenge's amount can't be parsed, `SpendTracker` skips the
+`maxPerCall`/`maxTotal` checks entirely and reserves nothing for it, rather than treating it as
+`0` and still enforcing the caps. Only enable it if you trust the endpoints you're calling with
+this `payFetch` instance.
 
 Full details — including the budget reserve/release semantics on failed payment attempts,
 channel-pinning gotchas, and the double `"challenge"` event on the MPP leg:

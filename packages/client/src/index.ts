@@ -13,6 +13,9 @@ export { SpendLimitExceeded } from "./limits.js";
 /** Thrown when a probe returns a payment challenge for a protocol this SDK doesn't yet support. */
 export class UnsupportedChallenge extends Error {}
 
+/** Thrown by {@link createPayingFetch} when a config has neither `secret` nor a valid `keypair`. */
+export class MissingSignerConfig extends Error {}
+
 /** Configuration for `createPayingFetch`. */
 export type PayingFetchConfig = {
   /** Stellar secret seed ("S..."). One of `secret`/`keypair` is required. */
@@ -56,7 +59,7 @@ type InternalPayingFetchConfig = PayingFetchConfig & {
 function resolveSecret(config: PayingFetchConfig): string {
   if (config.secret) return config.secret;
   if (config.keypair instanceof Keypair) return config.keypair.secret();
-  throw new Error("createPayingFetch requires either `secret` or `keypair` in its config");
+  throw new MissingSignerConfig("createPayingFetch requires either `secret` or `keypair` in its config");
 }
 
 /**
