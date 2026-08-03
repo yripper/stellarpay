@@ -23,5 +23,17 @@ Notes:
 - Every publishable package's `package.json` already sets `"publishConfig": { "access": "public" }`
   — the `--access public` flag on the `publish` commands above is the belt-and-suspenders
   confirmation npm requires for a new scoped package's first publish.
+- Every publishable package's `package.json` sets `"license": "MIT"`, `"engines": { "node":
+  ">=22" }`, a `"description"`, and `"keywords"`; a root `LICENSE` (MIT) is copied into each
+  publishable package's directory so it's included in the published tarball.
+- Every publishable package's `package.json` has a `"prepack": "pnpm build"` script, so `npm
+  pack`/`npm publish` (and `pnpm -r publish` above) always rebuild `dist/` from current source
+  before packing — you never publish a stale build by forgetting a manual `pnpm build` first.
+- **No `repository` field is set** — this repo has no git remote configured yet
+  (`git remote -v` returns nothing) at the time these packages were prepared for publishing.
+  Before running step 5, add a `"repository": { "type": "git", "url": "..." }` field to each
+  publishable package's `package.json` (and ideally a `"homepage"`/`"bugs"` field too) once the
+  repo has a real remote — npm's package page links back to it, and its absence is otherwise
+  silently permitted, not an error.
 
 [Back to root README](./README.md)

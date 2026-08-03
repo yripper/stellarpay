@@ -1,19 +1,25 @@
 {
   "name": "@stellarpay/client",
   "version": "0.1.0",
+  "description": "Auto-paying fetch for Stellar x402 and MPP challenges, with spend limits.",
+  "keywords": ["stellar", "x402", "mpp", "payments", "paywall", "fetch", "agent"],
+  "license": "MIT",
   "type": "module",
+  "engines": { "node": ">=22" },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": "./dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE"
   ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
+    "prepack": "pnpm build",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"

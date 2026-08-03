@@ -1,19 +1,25 @@
 {
   "name": "@stellarpay/core",
   "version": "0.1.0",
+  "description": "Config-driven payment paywall for Stellar — x402, MPP charge, and MPP channel behind one orchestrator.",
+  "keywords": ["stellar", "x402", "mpp", "payments", "paywall", "sdk"],
+  "license": "MIT",
   "type": "module",
+  "engines": { "node": ">=22" },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": "./dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE"
   ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
+    "prepack": "pnpm build",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"

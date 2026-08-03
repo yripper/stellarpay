@@ -1,19 +1,25 @@
 {
   "name": "@stellarpay/fastify",
   "version": "0.1.0",
+  "description": "One-line Fastify plugin adapter for the Stellarpay payment paywall.",
+  "keywords": ["stellar", "x402", "mpp", "payments", "paywall", "fastify", "plugin"],
+  "license": "MIT",
   "type": "module",
+  "engines": { "node": ">=22" },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": "./dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE"
   ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
+    "prepack": "pnpm build",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
