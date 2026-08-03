@@ -26,7 +26,13 @@ export type Receipt = {
   scheme: Scheme;
   route: string;
   network: NetworkId;
-  /** Decimal amount charged. */
+  /**
+   * Charged amount. Decimal (e.g. `"0.01"`) for dollar-priced routes. For x402's
+   * explicit-asset `{asset, amount}` price form, this is that price's raw base-units
+   * string instead — the unit depends on the route's price form, it is not normalized.
+   * (`mpp-charge`/`mpp-channel` reject explicit-asset prices at config time — see
+   * `config.ts` — so their receipts are always decimal.)
+   */
   amount: string;
   /** Asset contract id, or "USDC" for dollar-denominated prices. */
   asset: string;

@@ -18,7 +18,16 @@ internals or unhandled rejections for the host app.
 - `src/schemes/x402.ts` — `createX402Module`: x402 scheme via facilitator settlement.
 - `src/schemes/webAdapter.ts` — `webAdapter`: adapts a web-standard `Request` to x402's `HTTPAdapter`.
 - `src/stellarpay.ts` — `stellarpay()`: ties config + router + scheme modules into the public API.
-- `src/index.ts` — Public re-exports.
+- `src/internal/price.ts` — `dollarToDecimal`, `decimalToBaseUnits`, `InvalidPriceError`:
+  price/amount conversion helpers. Moved here from the (now-unused-by-this-package) private
+  `@stellarpay/shared`, 2026-08-03 — see Dependencies below.
+- `src/internal/networks.ts` — `NETWORKS`, `NetworkPreset`: per-network URL/passphrase
+  presets. Same move as `price.ts`; imports `NetworkId` from `../types.ts` rather than
+  redeclaring it.
+- `src/internal/index.ts` — barrel re-exporting `price.ts` + `networks.ts`, used by this
+  package's own internal imports (`config.ts`, `schemes/*.ts`).
+- `src/index.ts` — Public re-exports, including `dollarToDecimal`/`decimalToBaseUnits`/
+  `NETWORKS`/`NetworkPreset` as plain utility exports (see Public exports below).
 
 ## Public Surface
 
@@ -43,25 +52,33 @@ internals or unhandled rejections for the host app.
 - `type Scheme = "x402" | "mpp-charge" | "mpp-channel"` (`types.ts:16`)
 - `type PriceInput = string | { asset: string; amount: string }` (`types.ts:19`)
 - `type RouteRule = { price: PriceInput; scheme?: Scheme; sponsorGas?: boolean; description?: string }` (`types.ts:22`)
-- `type Receipt` — settlement receipt shape emitted to `onPayment` (`types.ts:25-39`)
-- `type StellarpayConfig` — top-level SDK config (`types.ts:42-62`), including
-  `facilitatorApiKey?: string` (`types.ts:53`) — bearer token for the x402 facilitator's
+- `type Receipt` — settlement receipt shape emitted to `onPayment` (`types.ts:25-45`). Its
+  `amount` field's unit depends on the route's price form — decimal for dollar prices, raw
+  base units for x402's explicit-asset prices (`types.ts:29-35`; see Gotchas below).
+- `type StellarpayConfig` — top-level SDK config (`types.ts:48-68`), including
+  `facilitatorApiKey?: string` (`types.ts:60`) — bearer token for the x402 facilitator's
   `verify`/`settle`/`supported` endpoints; semi-sensitive, never logged or echoed in error
   messages, same handling as `mppSecretKey`/`sponsorSecret`
-- `type SchemeOutcome = { type: "pass"; receipt?: Receipt; headers?: Record<string, string> } | { type: "respond"; response: Response }` (`types.ts:58-60`)
-- `type SchemeModule = { scheme: Scheme; init?(): Promise<void>; handle(req, match): Promise<SchemeOutcome> }` (`types.ts:63-67`)
-- `class StellarpayConfigError extends Error` — thrown by `parseConfig` (`types.ts:70`)
+- `type SchemeOutcome = { type: "pass"; receipt?: Receipt; headers?: Record<string, string> } | { type: "respond"; response: Response }` (`types.ts:71-73`)
+- `type SchemeModule = { scheme: Scheme; init?(): Promise<void>; handle(req, match): Promise<SchemeOutcome> }` (`types.ts:76-80`)
+- `class StellarpayConfigError extends Error` — thrown by `parseConfig` (`types.ts:83`)
 
 ### Config
 
 - `function parseConfig(input: unknown): StellarpayConfig` — Zod-validates config, cross-checks
   that `mppSecretKey`/`sponsorSecret`/`channel` are present when routes need them; throws
   `StellarpayConfigError` with a field-naming (never value-echoing) message on failure
-  (`packages/core/src/config.ts:129-135`). `facilitatorApiKey` is validated as a plain optional
+  (`packages/core/src/config.ts`). `facilitatorApiKey` is validated as a plain optional
   string (`config.ts`'s `configSchema`, next to `mppSecretKey`) — no format constraint (it's an
   opaque bearer token, not a Stellar key) and no cross-field requirement: unlike
   `mppSecretKey`/`sponsorSecret`/`channel`, omitting it never fails validation, since the x402
   facilitator auth requirement is a live-network concern `parseConfig` can't see at config time.
+  `channel.commitmentPublicKey` must match `/^[0-9a-fA-F]{64}$/` — a raw ed25519 public key,
+  hex-encoded, not a Stellar `G...` strkey (see Gotchas below). `parseConfig` also rejects two
+  scheme/config combinations that would otherwise silently misbehave at request time (both
+  added in the final fix wave, 2026-08-03 — see Gotchas): an explicit-asset `{asset, amount}`
+  price on an `mpp-charge`/`mpp-channel` route, and any `mpp-*` route when `network` is
+  `"stellar:pubnet"`.
 
 ### Router
 
@@ -90,10 +107,14 @@ These factories are **intentionally not re-exported from `src/index.ts`**: the p
 contract is `stellarpay()` + `Stellarpay`, not the individual scheme constructors. Tests
 that need them import directly from `src/schemes/*.ts`.
 
-### Public exports (`packages/core/src/index.ts:1-6`)
+### Public exports (`packages/core/src/index.ts`)
 
 `stellarpay`, `type Stellarpay`, everything from `types.ts`, `parseConfig`, `compileRoutes`,
-`matchRoute`, `type CompiledRoute`.
+`matchRoute`, `type CompiledRoute`, plus plain utility exports `dollarToDecimal`,
+`decimalToBaseUnits`, `NETWORKS`, `type NetworkPreset` (from `src/internal/`, see Structure
+above) — not part of the orchestrator's own contract, but exported since `client`/`mcp` (and
+any consumer building custom price/asset logic) need them and can no longer import them from
+the private `@stellarpay/shared`.
 
 ## Key Methods (`file:line`)
 
@@ -111,9 +132,18 @@ that need them import directly from `src/schemes/*.ts`.
 ## Dependencies
 
 - `zod` — config schema validation (`config.ts`).
-- `@stellarpay/shared` (workspace, private/bundled) — `NETWORKS`, `dollarToDecimal`.
 - `mppx`, `@stellar/mpp`, `@stellar/stellar-sdk` — MPP charge/channel schemes.
-- `@x402/core`, `@x402/stellar` — x402 scheme + facilitator client.
+- `@x402/core` (pinned `~2.20.0`, not `^` — a looser range risks a second, incompatible copy
+  resolving alongside `@stellarpay/client`'s own `@x402/core` dependency, breaking
+  `instanceof` checks across the two installed copies), `@x402/stellar` — x402 scheme +
+  facilitator client.
+
+No dependency on `@stellarpay/shared`: `NETWORKS`, `dollarToDecimal`, and `decimalToBaseUnits`
+live in this package's own `src/internal/` (see Structure above) and are re-exported as plain
+utilities from `src/index.ts` — see Public exports below. This move (part of the final fix
+wave, 2026-08-03) is what unblocks `npm install`ing this package standalone: `@stellarpay/shared`
+is `"private": true` and can never be published, so a publishable package can never declare it
+as a runtime `dependency`.
 
 ## Gotchas & Invariants
 
@@ -122,6 +152,32 @@ that need them import directly from `src/schemes/*.ts`.
   same default `createX402Module` uses internally to build its own route subset — see
   `packages/core/src/schemes/x402.ts:37`) and only calls the matching factory for each. A
   config with no `mpp-channel` routes never touches `cfg.channel`, so it's safe to omit.
+- **`mpp-charge`/`mpp-channel` are pinned to testnet USDC (`USDC_SAC_TESTNET`), with no
+  per-network asset selection — `parseConfig` rejects them on `"stellar:pubnet"`.** Both
+  scheme factories hardcode `currency: USDC_SAC_TESTNET` (`mppCharge.ts`, `mppChannel.ts`)
+  regardless of `cfg.network`; there is no config field to pick a different SAC address for
+  mainnet. Rather than silently settling a pubnet request against a testnet-only asset,
+  `configSchema`'s `superRefine` (`config.ts`) rejects any config combining
+  `network: "stellar:pubnet"` with a route whose scheme is `mpp-charge`/`mpp-channel`
+  ("mpp schemes currently support stellar:testnet only..."). Only `x402` routes work against
+  `"stellar:pubnet"` today; mainnet support for the mpp schemes is a roadmap item.
+- **Explicit-asset (`{asset, amount}`) prices are rejected on `mpp-*` routes — a real
+  money-correctness bug, not just an inconsistency.** `mpp-charge`/`mpp-channel`'s
+  `amountFor()` (their own source files) would pass an explicit-asset price's `amount`
+  straight through as if it were a decimal string, but `@stellar/mpp`'s server always
+  multiplies the request amount by the configured asset's decimals — and `currency` is fixed
+  per-factory with no per-call override (see the bullet above), so the configured asset is
+  ignored too. The combination would overcharge by roughly `10^7`x in the wrong asset.
+  `configSchema`'s `superRefine` rejects `{asset, amount}` prices on any route whose scheme
+  is `mpp-charge`/`mpp-channel` before this can happen; only dollar-string prices are
+  accepted there. Plain `x402` routes are unaffected and still accept explicit-asset prices.
+- **`channel.commitmentPublicKey` must be 64-hex, not a Stellar address.**
+  `createMppChannelModule` (`mppChannel.ts`) decodes it via `Buffer.from(key, "hex")` then
+  `StrKey.encodeEd25519PublicKey(...)` — it expects the *raw* ed25519 public key bytes,
+  hex-encoded (64 hex chars = 32 bytes), not a `G...` strkey. `channelSchema` in `config.ts`
+  enforces `/^[0-9a-fA-F]{64}$/` so a G-strkey (or anything else non-hex) is rejected at
+  config time with a message naming the field and the expected format, instead of throwing an
+  opaque `Buffer`/`StrKey` error the first time a `mpp-channel` route is hit.
 - **The x402 facilitator requires auth, and `parseConfig` can't enforce that.** The OZ
   testnet facilitator's `/verify`, `/settle`, and `/supported` endpoints all require
   `Authorization: Bearer <key>` — omitting `facilitatorApiKey` doesn't fail config
@@ -178,8 +234,20 @@ that need them import directly from `src/schemes/*.ts`.
   shape, and synchronous `StellarpayConfigError` on bad config.
 - `packages/core/test/config.test.ts`, `router.test.ts`, `mppCharge.test.ts`,
   `mppChannel.test.ts`, `x402.test.ts` — per-module unit tests for Tasks 4–8.
+- `packages/core/test/price.test.ts`, `networks.test.ts` — unit tests for the
+  `src/internal/` price/network utilities, moved here from `@stellarpay/shared` in the final
+  fix wave (2026-08-03) along with the source files themselves.
 - `config.test.ts` — `"accepts an optional facilitatorApiKey"`: `parseConfig` round-trips the
-  field unchanged.
+  field unchanged. Final fix wave additions: explicit-asset prices rejected on `mpp-charge`/
+  `mpp-channel` routes but still accepted on plain `x402` routes; `stellar:pubnet` rejected
+  when any `mpp-*` route is configured but accepted for `x402`-only configs; a G-strkey
+  `commitmentPublicKey` rejected, a 64-hex one accepted.
+- `mppCharge.test.ts` — `"converts dollar price to decimal amount for mppx, not the raw
+  \"$0.01\" string"`: decodes the actual 402 `WWW-Authenticate` challenge via mppx's own
+  `Challenge.fromResponse` and asserts the wire `request.amount` equals
+  `decimalToBaseUnits("0.01")` in base units — not just that the response type is `"respond"`
+  — making the `dollarToDecimal`/`toBaseUnits` conversion pipeline load-bearing instead of
+  merely implied by a non-throw.
 - `x402.test.ts` — `"sends a Bearer Authorization header to the facilitator when
   facilitatorApiKey is set"` / `"sends no Authorization header when facilitatorApiKey is not
   set"`: both capture the mocked fetch's `init.headers` on the `/supported` call and assert
@@ -270,3 +338,18 @@ tests) all pass unmodified.
   throws) verified against the installed package's own doc comment
   (`node_modules/@x402/core/dist/esm/x402Client-0g4vl2En.d.mts:60-85`) and its runtime
   implementation (`chunk-4Y6I6537.mjs`'s `createAuthHeaders()`/`getSupported()`).
+- 2026-08-03 (final fix wave): `price.ts`/`networks.ts` (+tests) moved in from
+  `@stellarpay/shared` into `src/internal/`, re-exported as plain utilities from
+  `index.ts`; `config.ts` gained the explicit-asset/mpp-*, pubnet/mpp-*, and 64-hex
+  `commitmentPublicKey` rejections (with new tests); `types.ts`'s doc comments recounted
+  (`Receipt.amount`'s doc grew from 1 line to 7, the top-of-file comment shrank by 1 —
+  everything from `Receipt` onward in `types.ts` shifted `+4`, reflected in the citations
+  above). `pnpm typecheck` (7/7) / `pnpm build` (7/7) / `pnpm test` (19 files, 88 tests, up
+  from 80 — the ten new tests are `price.test.ts` (arriving with 10 of its own, moved
+  as-is), `networks.test.ts` (2, moved as-is), and 8 new `config.test.ts` cases; net package
+  count for `pnpm test`/`pnpm build`/`pnpm typecheck` is still 7, `@stellarpay/shared` was
+  already counted before this move) all pass. `pnpm pack` of `core`/`client`/`mcp`, `npm
+  install` of the `core` tarball in a directory outside this workspace, and `node -e
+  "import('@stellarpay/core').then(m => console.log(typeof m.stellarpay))"` printing
+  `"function"` were all re-verified against the moved layout — see the root fix-wave report
+  for full command output.

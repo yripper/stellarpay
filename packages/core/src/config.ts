@@ -16,6 +16,7 @@ const ASSET_PATTERN = /^C[A-Z2-7]{55}$/;
 const BASE_UNITS_PATTERN = /^\d+$/;
 
 const SCHEMES = ["x402", "mpp-charge", "mpp-channel"] as const;
+const MPP_SCHEMES = ["mpp-charge", "mpp-channel"] as const;
 
 // Single source of truth for which network ids are accepted: derived from
 // `./internal/networks.js`'s NETWORKS presets rather than duplicating the list.
@@ -110,6 +111,28 @@ const configSchema = z
         message: "channel is required when any route uses the mpp-channel scheme",
         path: ["channel"],
       });
+    }
+    if (hasMppRoute && config.network === "stellar:pubnet") {
+      ctx.addIssue({
+        code: "custom",
+        message: "mpp schemes currently support stellar:testnet only; mainnet lands with the mainnet-preset roadmap item",
+        path: ["network"],
+      });
+    }
+    // Explicit-asset prices are silently mishandled on mpp-* routes today: @stellar/mpp's
+    // server treats a price's `amount` as a human-decimal string and scales it by the
+    // configured asset's decimals, but `{asset, amount}` prices already carry base units,
+    // and `currency` is fixed at the factory level with no per-call override — so an
+    // explicit-asset price would overcharge ~10^7x in the wrong asset. Reject it at config
+    // time until per-route asset selection is implemented.
+    for (const [routeKey, rule] of Object.entries(config.routes) as [string, RouteRule][]) {
+      if (rule.scheme && (MPP_SCHEMES as readonly string[]).includes(rule.scheme) && typeof rule.price === "object") {
+        ctx.addIssue({
+          code: "custom",
+          message: "explicit-asset prices are not yet supported on mpp-* routes; use a dollar price — asset selection lands with the multi-currency roadmap item",
+          path: ["routes", routeKey, "price"],
+        });
+      }
     }
   });
 

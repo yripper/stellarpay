@@ -186,8 +186,11 @@ calls.
 ## Status & known facts
 
 - **Testnet-first.** The `stellar:testnet` network preset pins the OZ facilitator and a
-  **testnet** USDC SAC address (`packages/shared/src/networks.ts`). A `stellar:pubnet` preset
-  exists structurally but mainnet hardening is still on the [roadmap](./docs/ROADMAP.md).
+  **testnet** USDC SAC address (`packages/core/src/internal/networks.ts`). A `stellar:pubnet`
+  preset exists structurally but mainnet hardening is still on the
+  [roadmap](./docs/ROADMAP.md) — `parseConfig` already rejects `stellar:pubnet` combined with
+  an `mpp-*` route, since the `mpp-charge`/`mpp-channel` schemes are currently pinned to
+  testnet USDC with no per-network asset selection.
 - **The x402 facilitator requires auth.** The OZ facilitator's `/verify`, `/settle`, and
   `/supported` endpoints all require `Authorization: Bearer <key>` — without one they 401.
   Set `StellarpayConfig.facilitatorApiKey` (see the hero snippet above); get a free testnet

@@ -32,4 +32,47 @@ describe("parseConfig", () => {
     const c = parseConfig({ ...valid, facilitatorApiKey: "test-facilitator-key" });
     expect(c.facilitatorApiKey).toBe("test-facilitator-key");
   });
+
+  const explicitAssetPrice = { asset: "C".padEnd(56, "A"), amount: "10000" };
+
+  it("rejects explicit-asset prices on mpp-charge routes", () =>
+    expect(() =>
+      parseConfig({ ...valid, mppSecretKey: "s", routes: { "GET /a": { price: explicitAssetPrice, scheme: "mpp-charge" } } }),
+    ).toThrow(StellarpayConfigError));
+
+  it("rejects explicit-asset prices on mpp-channel routes", () =>
+    expect(() =>
+      parseConfig({
+        ...valid,
+        mppSecretKey: "s",
+        channel: { contract: "C".padEnd(56, "A"), commitmentPublicKey: "ab".repeat(32) },
+        routes: { "GET /a": { price: explicitAssetPrice, scheme: "mpp-channel" } },
+      }),
+    ).toThrow(StellarpayConfigError));
+
+  it("still accepts explicit-asset prices on plain x402 routes", () => {
+    const c = parseConfig({ ...valid, routes: { "GET /a": { price: explicitAssetPrice } } });
+    expect(typeof c.routes["GET /a"]!.price).toBe("object");
+  });
+
+  it("rejects stellar:pubnet when an mpp-charge route exists", () =>
+    expect(() =>
+      parseConfig({ ...valid, network: "stellar:pubnet", mppSecretKey: "s", routes: { "GET /a": { price: "$1", scheme: "mpp-charge" } } }),
+    ).toThrow(StellarpayConfigError));
+
+  it("rejects stellar:pubnet when an mpp-channel route exists", () =>
+    expect(() =>
+      parseConfig({
+        ...valid,
+        network: "stellar:pubnet",
+        mppSecretKey: "s",
+        channel: { contract: "C".padEnd(56, "A"), commitmentPublicKey: "ab".repeat(32) },
+        routes: { "GET /a": { price: "$1", scheme: "mpp-channel" } },
+      }),
+    ).toThrow(StellarpayConfigError));
+
+  it("accepts stellar:pubnet for plain x402 routes", () => {
+    const c = parseConfig({ ...valid, network: "stellar:pubnet" });
+    expect(c.network).toBe("stellar:pubnet");
+  });
 });

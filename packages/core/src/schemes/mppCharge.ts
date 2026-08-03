@@ -30,7 +30,7 @@ export function createMppChargeModule(cfg: StellarpayConfig): SchemeModule {
     methods: [
       stellar.charge({
         recipient: cfg.payTo,
-        currency: USDC_SAC_TESTNET, // explicit-asset routes override per call via amountFor
+        currency: USDC_SAC_TESTNET,
         network: cfg.network,
         rpcUrl: cfg.rpcUrl ?? NETWORKS[cfg.network].rpcUrl,
         store: Store.memory(),

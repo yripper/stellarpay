@@ -47,7 +47,7 @@ export function createMppChannelModule(cfg: StellarpayConfig): SchemeModule {
         network: cfg.network,
         rpcUrl: cfg.rpcUrl ?? NETWORKS[cfg.network].rpcUrl,
         recipient: cfg.payTo,
-        currency: USDC_SAC_TESTNET, // explicit-asset routes override per call via amountFor
+        currency: USDC_SAC_TESTNET,
       }),
     ],
   });

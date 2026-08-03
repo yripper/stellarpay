@@ -21,8 +21,10 @@ instances). This is the gap the Redis `Store` adapter item above would close; se
 [`docs/modules/core.md`](./modules/core.md)'s Gotchas for the current single-process caveat.
 
 The `stellar:pubnet` network preset already exists structurally
-(`packages/shared/src/networks.ts`), but mainnet hardening — real facilitator/RPC endpoints
-exercised end-to-end, real-money error handling, production-grade replay storage — is
-unverified and out of scope for this submission (see the spec's §12, "Out of scope").
+(`packages/core/src/internal/networks.ts`), but mainnet hardening — real facilitator/RPC
+endpoints exercised end-to-end, real-money error handling, production-grade replay storage,
+and asset selection for the `mpp-*` schemes (currently rejected on `stellar:pubnet` — see
+`docs/modules/core.md`'s Gotchas) — is unverified and out of scope for this submission (see
+the spec's §12, "Out of scope").
 
 [Back to root README](../README.md)
