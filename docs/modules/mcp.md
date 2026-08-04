@@ -1,5 +1,7 @@
 # @stellarpay-sdk/mcp — Paid MCP Tools (Server Guard + Paying Client)
 
+**Last verified:** 2026-08-04
+
 ## Purpose
 
 Applies stellarpay's payment model to the Model Context Protocol (MCP): a server-side

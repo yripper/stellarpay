@@ -1,5 +1,7 @@
 # @stellarpay-sdk/core — Config, Router, Scheme Modules, and the `stellarpay()` Orchestrator
 
+**Last verified:** 2026-08-04
+
 ## Purpose
 
 The public SDK package. Validates a `StellarpayConfig`, compiles a route table, dispatches

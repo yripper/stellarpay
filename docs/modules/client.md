@@ -1,5 +1,7 @@
 # @stellarpay-sdk/client — Auto-Paying Fetch (x402 + MPP)
 
+**Last verified:** 2026-08-03
+
 ## Purpose
 
 Consumer-side SDK: `createPayingFetch(config)` returns a `fetch`-compatible function that

@@ -1,5 +1,7 @@
 # examples/ — Demo Services
 
+**Last verified:** 2026-08-04
+
 ## Purpose
 
 `examples/` holds standalone demo services that showcase the stellarpay SDK end-to-end for

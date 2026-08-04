@@ -102,11 +102,11 @@ the mpp `Payment-Receipt` header's `reference` field, which `@stellar/mpp`'s ser
 the broadcast transaction's own hash), amber `x402` rows (`GET /report/*`, `GET
 /alerts/whales`) **and** cyan `mpp` rows routed through `@stellarpay-sdk/core`'s mpp-charge scheme
 (`GET /deep-dive/*` on express-api, `GET /stats/fees` on fastify-api) are now equally fair
-game to click — pick whichever row is on screen. **The MCP tool rows are the one exception:**
-`account_summary`/`whale_watch` go through the separate `@stellarpay-sdk/mcp` package
-(`packages/mcp/src/server.ts`), whose `ToolPaymentReceipt` type has no `txHash` field at all
-(untouched by this fix) — those rows still render `—` instead of a link; don't click on those
-expecting one. The "verify on-chain ↗" bar and the buyer-balance panel
+game to click — pick whichever row is on screen. The MCP tool rows (`account_summary`,
+`whale_watch`) are clickable too as of the `@stellarpay-sdk/mcp` `txHash` fix
+(`packages/mcp/src/server.ts:62-72` populates `ToolPaymentReceipt.txHash` from the mppx
+transport's receipt `reference`) — live-verified on testnet, so **every** row in the feed now
+carries a settlement link. The "verify on-chain ↗" bar and the buyer-balance panel
 (`examples/dashboard/public/index.html`) only render when the dashboard's `DEMO_PAYTO` /
 `DEMO_BUYER_PUBLIC` env vars are set on the live Railway deployment (see
 `examples/dashboard/README.md`'s Env vars section) — confirm both are set before recording
@@ -116,23 +116,19 @@ what's on screen.
 ## Shot 6 — Close (2:40–3:00)
 
 Screen: `README.md`'s **Packages** table (`README.md:111-125`) and **Links** section
-(`README.md:244-251`).
+(`README.md:320-327`).
 
-Say: "Six packages, ready to publish on npm under @stellarpay: core, Express, Hono, Fastify,
-an auto-paying client, and paid MCP tools — the missing monetization layer for the agent
-economy, on Stellar."
+Say: "Six packages, live on npm under @stellarpay-sdk: core, Express, Hono, Fastify, an
+auto-paying client, and paid MCP tools — the missing monetization layer for the agent economy,
+on Stellar."
 
 *Note for the operator:* the repo ships **seven** packages total, but `@stellarpay-sdk/shared`
-is deliberately private and never published (`README.md:215-221`, `PUBLISHING.md`) — only
+is deliberately private and never published (`README.md:289-295`, `PUBLISHING.md`) — only
 `core`, `express`, `hono`, `fastify`, `client`, and `mcp` go to npm, so "six packages" is the
-accurate count. **As of this doc being written, none of the six are on npm yet** (confirmed
-2026-08-04: `curl https://registry.npmjs.org/@stellarpay-sdk/core` → `{"error":"Not found"}`) —
-publishing is a manual step the repo owner runs personally per `PUBLISHING.md`, not something
-any task automates. Before recording this shot, re-confirm the packages are still unpublished
-(`npm view @stellarpay-sdk/core version`, or check
-`https://www.npmjs.com/package/@stellarpay-sdk/core`) — if they've since gone live, swap the
-line for: "Six packages, published on npm under @stellarpay…" — don't say "published" until
-it's true.
+accurate count. All six went live at `0.1.0` on 2026-08-04. The scope is **`@stellarpay-sdk`**,
+not `@stellarpay` — say it with the suffix, since the bare scope belongs to an unrelated npm
+account. Re-confirm before recording with `npm view @stellarpay-sdk/core version` (authoritative
+— a plain `curl` of the registry can serve a stale 404).
 
 ## Re-shoot checklist
 

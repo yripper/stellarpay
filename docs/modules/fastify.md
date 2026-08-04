@@ -1,5 +1,7 @@
 # @stellarpay-sdk/fastify — Fastify Plugin Adapter
 
+**Last verified:** 2026-08-01
+
 ## Purpose
 
 Fastify plugin adapter for the Stellarpay payment SDK. Wraps `@stellarpay-sdk/core`'s

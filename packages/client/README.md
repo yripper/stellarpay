@@ -10,7 +10,7 @@ Part of the [stellarpay](../../README.md) SDK.
 
 ## Install
 
-Not yet published — see [PUBLISHING.md](../../PUBLISHING.md). Once published:
+Published on npm at `0.1.0` — see [PUBLISHING.md](../../PUBLISHING.md) for how releases are cut.
 
 ```sh
 npm install @stellarpay-sdk/client

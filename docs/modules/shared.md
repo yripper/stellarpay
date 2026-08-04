@@ -1,5 +1,7 @@
 # @stellarpay-sdk/shared — Gasless Channels Submission (+ Backward-Compat Re-exports)
 
+**Last verified:** 2026-08-04
+
 ## Purpose
 
 Private, unpublished workspace package. Originally held network presets, price/base-unit
@@ -14,10 +16,10 @@ published, breaking `npm install` for anyone outside this workspace. What remain
 is `submitViaChannels`; the moved utilities are still re-exported from this package's
 `index.ts` so nothing importing `@stellarpay-sdk/shared` directly breaks.
 
-**`submitViaChannels` is currently dead code** — nothing in this SDK calls it yet. It's
-retained for a future "Plan B" (demo/ops tooling — see the root README's Links section) that is
-expected to use it for gasless settlement submission; until that lands, only its own test suite
-exercises it.
+**`submitViaChannels` has exactly one caller, and it is not a publishable package**:
+`scripts/setup-demo.ts:72` submits the demo buyer's USDC trustline transaction through it so
+the buyer never pays the fee (`scripts/setup-demo.ts:9`). No package under `packages/` imports
+it. Its own test suite (`test/channels.test.ts`) exercises it directly.
 
 ## Structure
 
@@ -49,8 +51,8 @@ exercises it.
   dependency direction before this package's utilities moved. Since this package stays
   `"private": true` and is never published, its own dependency direction has no effect on
   what the publishable packages' `npm install` pulls in.
-- **`submitViaChannels` is dead code today** — see Purpose above. Its own test suite
-  (`test/channels.test.ts`) still exercises it directly.
+- **`submitViaChannels`'s only caller is `scripts/setup-demo.ts:72`** — see Purpose above. Its
+  own test suite (`test/channels.test.ts`) also exercises it directly.
 - **Channels timeout requirement**: Callers of `submitViaChannels` must build XDR envelopes with `.setTimeout(30)` to ensure compatibility with OZ Channels processing. The function will fall back to direct self-pay submission only on `FEE_LIMIT_EXCEEDED` errors; other errors (e.g., `POOL_CAPACITY` after retries, `SIMULATION_FAILED`) are re-thrown. If Channels accepts the transaction but returns a null hash, an error is thrown immediately.
 - **Network passphrase**: The optional `networkPassphrase` parameter defaults to Stellar's testnet passphrase. For public-network submissions, explicitly provide `networkPassphrase: "Public Global Stellar Network ; September 2015"`.
 

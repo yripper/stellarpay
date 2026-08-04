@@ -112,24 +112,21 @@ publishable packages that need it don't depend on an unpublishable package at ru
 
 | Package | npm | What it does | README |
 |---|---|---|---|
-| `@stellarpay-sdk/core` | not yet published | Config validation, route matching, scheme registry, the `stellarpay()` orchestrator | [packages/core](./packages/core/README.md) |
-| `@stellarpay-sdk/express` | not yet published | One-line Express middleware adapter | [packages/express](./packages/express/README.md) |
-| `@stellarpay-sdk/hono` | not yet published | One-line Hono middleware adapter | [packages/hono](./packages/hono/README.md) |
-| `@stellarpay-sdk/fastify` | not yet published | One-line Fastify plugin adapter | [packages/fastify](./packages/fastify/README.md) |
-| `@stellarpay-sdk/client` | not yet published | `createPayingFetch()` — auto-pays any 402 (x402 or MPP), with spend limits | [packages/client](./packages/client/README.md) |
-| `@stellarpay-sdk/mcp` | not yet published | Per-tool-call payments for MCP servers (`toolPayments`) + a paying MCP client wrapper | [packages/mcp](./packages/mcp/README.md) |
-| `@stellarpay-sdk/shared` | private, unpublished | Internal, dead-until-Plan-B: OZ Channels submission (`submitViaChannels`); re-exports network presets/price helpers from `@stellarpay-sdk/core` for backward compatibility | [packages/shared](./packages/shared/README.md) |
+| `@stellarpay-sdk/core` | [`0.1.0`](https://www.npmjs.com/package/@stellarpay-sdk/core) | Config validation, route matching, scheme registry, the `stellarpay()` orchestrator | [packages/core](./packages/core/README.md) |
+| `@stellarpay-sdk/express` | [`0.1.0`](https://www.npmjs.com/package/@stellarpay-sdk/express) | One-line Express middleware adapter | [packages/express](./packages/express/README.md) |
+| `@stellarpay-sdk/hono` | [`0.1.0`](https://www.npmjs.com/package/@stellarpay-sdk/hono) | One-line Hono middleware adapter | [packages/hono](./packages/hono/README.md) |
+| `@stellarpay-sdk/fastify` | [`0.1.0`](https://www.npmjs.com/package/@stellarpay-sdk/fastify) | One-line Fastify plugin adapter | [packages/fastify](./packages/fastify/README.md) |
+| `@stellarpay-sdk/client` | [`0.1.0`](https://www.npmjs.com/package/@stellarpay-sdk/client) | `createPayingFetch()` — auto-pays any 402 (x402 or MPP), with spend limits | [packages/client](./packages/client/README.md) |
+| `@stellarpay-sdk/mcp` | [`0.1.0`](https://www.npmjs.com/package/@stellarpay-sdk/mcp) | Per-tool-call payments for MCP servers (`toolPayments`) + a paying MCP client wrapper | [packages/mcp](./packages/mcp/README.md) |
+| `@stellarpay-sdk/shared` | private, never published | Internal ops helper: OZ Channels submission (`submitViaChannels`), used by `scripts/setup-demo.ts`; re-exports network presets/price helpers from `@stellarpay-sdk/core` for backward compatibility | [packages/shared](./packages/shared/README.md) |
 
-Not yet published to npm (confirmed 2026-08-04: `curl https://registry.npmjs.org/@stellarpay-sdk/core`
-→ `{"error":"Not found"}`) — see [PUBLISHING.md](./PUBLISHING.md) for the exact steps to
-publish all six under the `@stellarpay` npm scope.
+All six publishable packages are live on npm at `0.1.0` under the **`@stellarpay-sdk`** scope
+(the bare `@stellarpay` scope on npm belongs to an unrelated account). See
+[PUBLISHING.md](./PUBLISHING.md) for how releases are cut.
 
 ## Quickstart
 
 **1. Install**
-
-> **Not yet published — see [PUBLISHING.md](./PUBLISHING.md).** Until then, clone this repo
-> and use the workspace packages directly via `pnpm install`. Once published:
 
 ```sh
 npm install @stellarpay-sdk/core @stellarpay-sdk/express
@@ -150,6 +147,27 @@ const paywall = stellarpay({
   },
 });
 ```
+
+> **Route keys take exactly two forms:** `"METHOD /exact/path"` or `"METHOD /prefix/*"`.
+> Express-style `:params` are **not** supported — and this fails quietly, not loudly. The
+> config validator only checks `METHOD` + a leading slash
+> (`packages/core/src/config.ts:7`), so `"GET /report/:asset"` passes validation, compiles as a
+> *literal* exact path (`packages/core/src/router.ts:41-48`), and never matches
+> `GET /report/USDC`. The paywall then returns `undefined` for that request and **your route
+> serves for free**. Use `"GET /report/*"` for parameterized paths — that's what the demo
+> services do.
+
+Three schemes, chosen per route with `scheme` (default `x402`):
+
+| `scheme` | How it settles | Extra config it requires |
+|---|---|---|
+| `x402` (default) | Verified and settled through the OZ facilitator, one payment per request. Receipt carries `txHash` **and** `payer`. | `facilitatorApiKey` in practice — the OZ facilitator 401s without it |
+| `mpp-charge` | Per-request MPP settlement you run yourself, signing with your own seller key. Add `sponsorGas: true` to pay the buyer's fees. Receipt carries `txHash`; MPP's wire format has no payer field, so `payer` stays unset. | `mppSecretKey`; plus `sponsorSecret` if any route sets `sponsorGas` |
+| `mpp-channel` | Off-chain vouchers over an open payment channel — for high-frequency, sub-cent ticks where one on-chain settlement per request would cost more than the data. | `channel: { contract, commitmentPublicKey }` |
+
+Both `mpp-*` schemes are **testnet-only today** and reject explicit-asset prices — use dollar
+strings (`packages/core/src/config.ts:120-141`). Their replay/voucher state lives in an
+in-process `Map`, so a single instance only; see the [roadmap](./docs/ROADMAP.md).
 
 **3. Gate a route** — the adapter one-liner:
 
@@ -186,6 +204,60 @@ Each iteration probes the route, gets a `402`, pays it (within the configured li
 retries — the second and third calls behave identically to the first; nothing is cached across
 calls.
 
+**5. Charge per MCP tool call** — same idea, but the payment happens *inside* the MCP protocol
+instead of over HTTP, so no paywall config or framework adapter is involved:
+
+```ts
+import { toolPayments } from "@stellarpay-sdk/mcp";
+
+const payments = toolPayments({          // instantiate ONCE per process — see below
+  payTo: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+  network: "stellar:testnet",
+  mppSecretKey: process.env.MPP_SECRET_KEY!,
+  prices: { deep_report: "$0.02" },      // tools not listed here stay free
+});
+
+server.registerTool(
+  "deep_report",
+  { description: "Account forensics. Paid: $0.02 (MPP).", inputSchema: { account: z.string() } },
+  payments.guard("deep_report", async ({ account }: { account: string }) => ({
+    content: [{ type: "text", text: await yourForensics(account) }],
+  })),
+);
+```
+
+An unpaid call to a priced tool rejects with JSON-RPC `-32042` instead of running the handler;
+`wrapPaidMcpClient` on the agent side answers that challenge and retries. `toolPayments()` must
+be created **once per process** — its replay-protection store is in-memory, and a per-request
+instance would forget every payment it has seen. One arity trap: a tool declared *without* an
+`inputSchema` is invoked by the MCP SDK as `handler(extra)`, not `handler(args, extra)`, so
+`guard`'s two-argument handler needs a four-line adapter — see
+`examples/mcp-server/src/mcp.ts:57`. Full server and client examples:
+[packages/mcp](./packages/mcp/README.md).
+
+**Receipts.** Every settled payment — HTTP or MCP — invokes your `onPayment(receipt)` hook with
+`{ scheme, route, network, amount, asset, payer?, txHash?, raw?, timestamp }`
+(`packages/core/src/types.ts:25-45`). `txHash` is a real Stellar transaction hash you can look
+up on Horizon; that's what the [live dashboard](#links) renders as its on-chain proof. `payer`
+is only populated on `x402` (MPP's wire format carries no payer field).
+
+## Examples
+
+Six runnable demo services live in [`examples/`](./examples) — the same ones deployed under
+[Links](#links) below:
+
+| Directory | What it demonstrates |
+|---|---|
+| [`express-api`](./examples/express-api) | Flagship seller: a free route, an x402 route, and an `mpp-charge` route with sponsored gas, all in one config |
+| [`hono-api`](./examples/hono-api) | "Gated in minutes" — the whole open-to-paid change is a 6-line diff |
+| [`fastify-api`](./examples/fastify-api) | Third framework, minimal surface |
+| [`mcp-server`](./examples/mcp-server) | Individually priced MCP tools |
+| [`agent`](./examples/agent) | A Claude-driven buyer with a wallet and a hard budget that shops across all four sellers |
+| [`dashboard`](./examples/dashboard) | Live SSE receipt feed with on-chain verify links |
+
+Each has its own README; [`docs/modules/examples.md`](./docs/modules/examples.md) is the
+source-cited deep dive across all six.
+
 ## Status & known facts
 
 - **Testnet-first.** The `stellar:testnet` network preset pins the OZ facilitator and a
@@ -211,16 +283,16 @@ calls.
   **Both legs verified PASS against live testnet on 2026-08-03** (post `@stellar/stellar-sdk`
   16.2.0 upgrade above); confirmed wire shapes for the x402 settle response and the mpp
   `Payment-Receipt` header are recorded in `docs/modules/core.md`.
-- **Not yet published to npm.** All seven packages build and test from source in this
-  monorepo. See [PUBLISHING.md](./PUBLISHING.md) for the exact steps to publish under the
-  `@stellarpay` scope.
+- **Published on npm at `0.1.0`** under the `@stellarpay-sdk` scope — six publishable packages
+  plus one private one, all built and tested from source in this monorepo. See
+  [PUBLISHING.md](./PUBLISHING.md) for how releases are cut.
 - **`@stellarpay-sdk/shared` is private** and intentionally never published. It is not a runtime
   dependency of any publishable package: the network-preset and price-conversion utilities it
   used to hold now live in `@stellarpay-sdk/core`'s public exports (see the Architecture section
   above), so the six publishable packages never depend on this package at all. `shared` itself
-  keeps only `submitViaChannels` (OZ Channels submission) — currently dead code, unused until
-  a Plan B demo/ops script calls it — plus a backward-compatible re-export of the moved
-  network/price utilities from `@stellarpay-sdk/core`.
+  keeps only `submitViaChannels` (OZ Channels submission) — called by the repo-local
+  `scripts/setup-demo.ts:72` to establish the demo buyer's USDC trustline fee-free — plus a
+  backward-compatible re-export of the moved network/price utilities from `@stellarpay-sdk/core`.
 
 ## Testing
 
@@ -232,13 +304,17 @@ pnpm test
 pnpm smoke   # optional, live testnet — needs .env, see .env.example
 ```
 
-Full testing strategy (unit, integration, smoke) is documented in the design spec, §10.
+`pnpm test` runs 160 tests across 30 files, covering `packages/*` and `examples/*`. Full
+testing strategy (unit, integration, smoke) is documented in the design spec, §10.
 
 ## Docs
 
-- [`docs/modules/`](./docs/modules/) — one living doc per package (source-cited, `file:line`).
+- [`docs/modules/`](./docs/modules/) — one living doc per package plus one for the demos
+  (source-cited, `file:line`); [`docs/modules/README.md`](./docs/modules/README.md) routes a
+  source path to its doc.
 - [`docs/ROADMAP.md`](./docs/ROADMAP.md) — stretch goals beyond this submission.
-- [`PUBLISHING.md`](./PUBLISHING.md) — exact npm publish steps.
+- [`docs/demo-video.md`](./docs/demo-video.md) — the demo recording shot list.
+- [`PUBLISHING.md`](./PUBLISHING.md) — npm release steps.
 - [`docs/superpowers/specs/2026-07-31-stellarpay-design.md`](./docs/superpowers/specs/2026-07-31-stellarpay-design.md) — the full design spec.
 
 ## Links
