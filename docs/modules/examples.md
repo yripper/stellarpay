@@ -191,15 +191,17 @@ optionally establishes the buyer's USDC trustline fee-free via OZ Channels). Bot
 
 ## Endpoints / Public Surface
 
-`examples/dashboard`'s HTTP surface (`examples/dashboard/src/server.ts:30-109`):
+`examples/dashboard`'s HTTP surface (`examples/dashboard/src/server.ts:46-168`):
 
-- `GET /healthz` — `200 { ok: true }`. Open, no auth (`server.ts:39`).
-- `GET /` — `200`, serves the `html` string passed into `buildApp()` (`server.ts:40`).
-- `GET /config` — `200 { payTo: string | null, buyerPublic: string | null }`. Open, no auth —
-  both fields are public Stellar keys (`server.ts:42-45`). `null` when the corresponding
-  `Deps.payTo`/`Deps.buyerPublic` (from `DEMO_PAYTO`/`DEMO_BUYER_PUBLIC`) is unset. The static
-  page fetches this on load to decide whether to show the "verify on-chain" link and the live
-  buyer-balance panel (`public/index.html:159-172`).
+- `GET /healthz` — `200 { ok: true }`. Open, no auth (`server.ts:56`).
+- `GET /` — `200`, serves the `html` string passed into `buildApp()` (`server.ts:57`).
+- `GET /config` — `200 { payTo: string | null, buyerPublic: string | null, scopes: string[],
+  repoUrl: string }`. Open, no auth — every field is public (`server.ts:62-64`). `payTo` and
+  `buyerPublic` are `null` when the corresponding `Deps.payTo`/`Deps.buyerPublic` (from
+  `DEMO_PAYTO`/`DEMO_BUYER_PUBLIC`) is unset. The static page fetches this on load to decide
+  whether to show the "verify on-chain" link and the live buyer-balance panel, to point the
+  header's GitHub link at `repoUrl`, and to build the target tabs from `scopes` so they can
+  never drift from what the agent accepts.
 - `POST /ingest` — header `Authorization: Bearer <INGEST_SECRET>`; JSON body
   `{ service: string, kind: "receipt", receipt: object }` or
   `{ service: string, kind: "agent-log", message: string }`. `401` on missing/wrong bearer
@@ -210,12 +212,24 @@ optionally establishes the buyer's USDC trustline fee-free via OZ Channels). Bot
   buffer (oldest first) as SSE frames (`data` = `JSON.stringify(event)`, `id` = `seq`), then
   stays open and pushes new events as they arrive. Sends an `event: ping` heartbeat frame
   every 25s to keep proxies from idling the connection out (`server.ts:68-90`).
-- `POST /unleash` — fires the configured agent's `/run` endpoint. `503 { error:
+- `POST /unleash` — fires the configured agent's `/run` endpoint. Optional JSON body
+  `{ scope }`; an absent, malformed, or unknown-scope body means `"all"` (`server.ts:170-186`),
+  so the pre-scope bodyless press still means "the whole economy". `503 { error:
   "agent_not_configured" }` if `agentUrl` is unset; `429 { error: "cooldown",
-  retryAfterSeconds }` if within the cooldown window; otherwise `202 { status: "unleashed"
-  }` and a fire-and-forget `POST <agentUrl>/run` with the ingest secret as bearer auth and a
-  5s timeout — an unreachable or failing agent never turns the `202` into an error
-  (`server.ts:92-106`).
+  retryAfterSeconds }` if within the cooldown window; otherwise `202 { status: "unleashed",
+  scope }` and a fire-and-forget `POST <agentUrl>/run` carrying `{ scope }`, with the ingest
+  secret as bearer auth and a 5s timeout — an unreachable or failing agent never turns the
+  `202` into an error (`server.ts:111-127`).
+- `POST /chat` — JSON body `{ message, scope? }`. Unlike `/unleash` this **awaits** the agent
+  and returns its answer: `200 { reply }` on success (`server.ts:129-168`). `400
+  { error: "malformed_json" | "empty_message" }` before anything is spent; `429 { error:
+  "cooldown", retryAfterSeconds }` from a **separate 30s** gate (`Deps.chatCooldown`,
+  `server.ts:50`) so a chat turn is never blocked by UNLEASH's 2-minute cooldown; `409` when
+  the agent is already mid-run; `502 { error: "agent_unreachable" }` when the agent is down or
+  exceeds the 120s timeout, rather than hanging the visitor's tab. Note this endpoint is
+  unauthenticated by design (it is the public demo's chat box) and each turn spends real
+  testnet funds — the 30s cooldown and the agent's own per-run spend limits are the only
+  guards.
 
 `examples/express-api`'s HTTP surface (`examples/express-api/src/server.ts:66-83`). Prices
 come from the `PRICES` constant (`server.ts:8`), both `"$0.02"`:
@@ -287,17 +301,30 @@ truth for both the guard and every human-readable description.
   (`main.ts:14-21`).
 - `GET /healthz` — free. `200 { ok: true }` (`main.ts:22-24`).
 
-`examples/agent`'s HTTP surface (`examples/agent/src/server.ts:4-12`) is a **trigger**, not a
+`examples/agent`'s HTTP surface (`examples/agent/src/server.ts:29-63`) is a **trigger**, not a
 storefront — this service buys, it never sells:
 
-- `GET /healthz` — free, no auth. `200 { ok: true }` (`server.ts:6`).
-- `POST /run` — header `Authorization: Bearer <INGEST_SECRET>`. `401 { error:
-  "unauthorized" }` on a missing or wrong token, `409 { error: "run_in_progress" }` when a
-  run is already in flight, otherwise `202 { status: "started" }` and the run proceeds in the
-  background (`server.ts:7-11`). The response never waits for the mission: everything the
-  caller learns afterwards arrives on the dashboard feed. Only the dashboard's `/unleash`
-  calls this in the demo, with the same shared `INGEST_SECRET`.
-- No route lists what the agent buys — the economy is `examples/agent/src/economy.ts:145`'s
+- `GET /healthz` — free, no auth. `200 { ok: true }` (`server.ts:37`).
+- `GET /scopes` — free, no auth. `200 { scopes }` — the scope strings `/run` and `/chat`
+  accept (`server.ts:40`).
+- `POST /run` — header `Authorization: Bearer <INGEST_SECRET>`; optional JSON body
+  `{ scope }`, defaulting to `"all"` when absent, malformed, or unrecognized
+  (`server.ts:12-27`). `401 { error: "unauthorized" }` on a missing or wrong token, `409
+  { error: "run_in_progress" }` when a run is already in flight, otherwise `202 { status:
+  "started", scope }` and the run proceeds in the background (`server.ts:42-47`). The response
+  never waits for the mission: everything the caller learns afterwards arrives on the
+  dashboard feed.
+- `POST /chat` — same bearer auth; JSON body `{ message, scope? }`. `400` on an empty message
+  or one over 500 characters, `409` when a run is in flight, otherwise `200 { reply, scope }`
+  — **awaited**, because the visitor's answer is the point (`server.ts:49-61`). The question
+  replaces the rotating mission; the buying it triggers is narrated to the feed exactly like a
+  `/run` mission.
+- **Scoping** (`examples/agent/src/economy.ts:31-46`): `SCOPES` is `"all"` plus each
+  `Buyable.service`, and `scopeEconomy()` filters the economy to one seller. A scoped run
+  gets its own mission from `missionFor()` (`run.ts:62-65`) rather than the unscoped
+  `MISSIONS` rotation, which would send Claude looking for tools outside its scope, and skips
+  the MCP connection entirely unless the scope needs it (`main.ts:97-98`).
+- No route lists what the agent buys — the economy is `examples/agent/src/economy.ts`'s
   `buildEconomy()` and the README's table, not an HTTP index.
 
 Beyond HTTP, the service fires **one run 5 seconds after boot** (`main.ts:128-130`) so the
@@ -450,7 +477,7 @@ TS surface consumed by later tasks:
   `sponsorSecret`/`sponsorGas` spread in conditionally so an unset optional var never lands
   as `undefined` in the config (`server.ts:22-23,31`). `onPayment` forwards every receipt to
   the reporter (`server.ts:34`). `app.use(stellarpayExpress(config))` is called **before**
-  any route registration (`server.ts:38`).
+  any route registration (`server.ts:40`).
 - `extractWhales(records, limit)` (`examples/hono-api/src/whales.ts:14-29`) — for each raw
   record, keeps it only if `type === "payment"` and `asset_type === "native"`
   (`whales.ts:18`) and every one of `amount`/`from`/`to`/`created_at`/`transaction_hash` is

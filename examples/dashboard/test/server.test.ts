@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCooldown } from "../src/cooldown.js";
-import { buildApp } from "../src/server.js";
+import { REPO_URL, SCOPES, buildApp } from "../src/server.js";
 
 const SECRET = "test-secret";
 
@@ -95,7 +95,12 @@ describe("dashboard app", () => {
     expect(first.status).toBe(202);
     expect(agentFetch).toHaveBeenCalledWith(
       "http://agent.test/run",
-      expect.objectContaining({ method: "POST", headers: { authorization: `Bearer ${SECRET}` } }),
+      expect.objectContaining({
+        method: "POST",
+        headers: { authorization: `Bearer ${SECRET}`, "content-type": "application/json" },
+        // A bodyless UNLEASH press must still reach the agent as the full economy.
+        body: JSON.stringify({ scope: "all" }),
+      }),
     );
     t += 30_000;
     const second = await app.request("/unleash", { method: "POST" });
@@ -117,13 +122,104 @@ describe("dashboard app", () => {
   it("config reports null payTo/buyerPublic when unset", async () => {
     const res = await makeApp().request("/config");
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ payTo: null, buyerPublic: null });
+    expect(await res.json()).toEqual({ payTo: null, buyerPublic: null, scopes: SCOPES, repoUrl: REPO_URL });
   });
 
   it("config echoes payTo/buyerPublic when configured", async () => {
     const app = makeApp({ payTo: "GSELLERPUBLICKEY", buyerPublic: "GBUYERPUBLICKEY" });
     const res = await app.request("/config");
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ payTo: "GSELLERPUBLICKEY", buyerPublic: "GBUYERPUBLICKEY" });
+    expect(await res.json()).toEqual({
+      payTo: "GSELLERPUBLICKEY",
+      buyerPublic: "GBUYERPUBLICKEY",
+      scopes: SCOPES,
+      repoUrl: REPO_URL,
+    });
+  });
+
+  // The scope a visitor picks must reach the agent verbatim; an unknown one must not.
+  it("unleash forwards a known scope and falls back to all for an unknown one", async () => {
+    const post = async (scope: string): Promise<unknown> => {
+      const agentFetch = vi.fn().mockResolvedValue(new Response(null, { status: 202 }));
+      const app = makeApp({
+        agentUrl: "http://agent.test",
+        cooldown: createCooldown(120_000, () => 0),
+        agentFetch: agentFetch as unknown as typeof fetch,
+      });
+      const res = await app.request("/unleash", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scope }),
+      });
+      expect(res.status).toBe(202);
+      return (agentFetch.mock.calls[0]?.[1] as { body: string }).body;
+    };
+    expect(await post("hono-api")).toBe(JSON.stringify({ scope: "hono-api" }));
+    expect(await post("not-a-service")).toBe(JSON.stringify({ scope: "all" }));
+  });
+
+  it("chat rejects an empty message before spending anything", async () => {
+    const agentFetch = vi.fn();
+    const app = makeApp({ agentUrl: "http://agent.test", agentFetch: agentFetch as unknown as typeof fetch });
+    const res = await app.request("/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "   " }),
+    });
+    expect(res.status).toBe(400);
+    expect(agentFetch).not.toHaveBeenCalled();
+  });
+
+  it("chat returns the agent's reply and then enforces its own cooldown", async () => {
+    let t = 0;
+    const agentFetch = vi.fn().mockResolvedValue(Response.json({ reply: "I bought whale alerts." }));
+    const app = makeApp({
+      agentUrl: "http://agent.test",
+      chatCooldown: createCooldown(30_000, () => t),
+      agentFetch: agentFetch as unknown as typeof fetch,
+    });
+    const ask = async (): Promise<Response> =>
+      app.request("/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: "what can you do?", scope: "hono-api" }),
+      });
+
+    const first = await ask();
+    expect(first.status).toBe(200);
+    expect(await first.json()).toEqual({ reply: "I bought whale alerts." });
+    expect(agentFetch).toHaveBeenCalledWith(
+      "http://agent.test/chat",
+      expect.objectContaining({ body: JSON.stringify({ message: "what can you do?", scope: "hono-api" }) }),
+    );
+
+    t += 10_000;
+    const second = await ask();
+    expect(second.status).toBe(429);
+    expect(((await second.json()) as { retryAfterSeconds: number }).retryAfterSeconds).toBe(20);
+  });
+
+  // An agent mid-run answers 409; the visitor must see that, not a generic 502.
+  it("chat surfaces the agent's run_in_progress as 409", async () => {
+    const agentFetch = vi.fn().mockResolvedValue(Response.json({ error: "run_in_progress" }, { status: 409 }));
+    const app = makeApp({ agentUrl: "http://agent.test", agentFetch: agentFetch as unknown as typeof fetch });
+    const res = await app.request("/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "hello" }),
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it("chat answers 502 rather than hanging when the agent is unreachable", async () => {
+    const agentFetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+    const app = makeApp({ agentUrl: "http://agent.test", agentFetch: agentFetch as unknown as typeof fetch });
+    const res = await app.request("/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "hello" }),
+    });
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "agent_unreachable" });
   });
 });

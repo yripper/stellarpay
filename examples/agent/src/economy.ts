@@ -22,6 +22,29 @@ export type Buyable = {
 
 type Urls = { express: string; hono: string; fastify: string };
 
+/**
+ * What a run or a chat turn is allowed to buy from. `"all"` is the full economy (the original
+ * UNLEASH behavior); every other value is a `Buyable.service` string, so a scoped run exercises
+ * exactly one demo service. Kept in sync with the `service` fields in {@link buildEconomy} by
+ * `test/economy.test.ts`, which fails if a service appears in one list and not the other.
+ */
+export const SCOPES = ["all", "express-api", "hono-api", "fastify-api", "mcp-server"] as const;
+
+export type Scope = (typeof SCOPES)[number];
+
+export function isScope(value: unknown): value is Scope {
+  return typeof value === "string" && (SCOPES as readonly string[]).includes(value);
+}
+
+/**
+ * Narrows an economy to one service. Returns an empty array when nothing matches — callers
+ * must treat that as "this service is unavailable this run" (the MCP buyables are absent
+ * whenever the MCP connection failed) rather than silently running an unscoped mission.
+ */
+export function scopeEconomy(economy: Buyable[], scope: Scope): Buyable[] {
+  return scope === "all" ? economy : economy.filter((item) => item.service === scope);
+}
+
 type Rec = Record<string, unknown>;
 const asRec = (v: unknown): Rec => (typeof v === "object" && v !== null ? (v as Rec) : {});
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);

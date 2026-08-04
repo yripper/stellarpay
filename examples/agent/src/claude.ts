@@ -40,7 +40,7 @@ export async function runClaudeMission(opts: {
   mission: string;
   economy: Buyable[];
   narrate: Narrator;
-}): Promise<void> {
+}): Promise<string | undefined> {
   const anthropic = new Anthropic({ apiKey: opts.apiKey });
   const tools = opts.economy.map((b) => ({
     name: b.name,
@@ -73,7 +73,9 @@ export async function runClaudeMission(opts: {
         .map((b) => b.text)
         .join(" ");
       opts.narrate(`Brief: ${finalText ? truncateBrief(finalText) : "(no text returned)"}`);
-      return;
+      // The feed gets the truncated line (it's a one-line ticker); the caller gets the full
+      // text, because /chat renders it as a reply where truncation would drop the answer.
+      return finalText || undefined;
     }
 
     messages.push({ role: "assistant", content: response.content });
@@ -98,4 +100,5 @@ export async function runClaudeMission(opts: {
     messages.push({ role: "user", content: results });
   }
   opts.narrate("Mission hit the turn limit — wrapping up.");
+  return undefined;
 }

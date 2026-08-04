@@ -49,12 +49,47 @@
   .row.log { color: var(--dim); font-style: italic; }
   .row.log .msg { color: var(--text); font-style: italic; }
   #empty { color: var(--dim); padding: 2rem 1.5rem; }
+  #gh { color: var(--dim); display: inline-flex; align-items: center; }
+  #gh:hover { color: var(--green); }
+  #gh svg { width: 20px; height: 20px; fill: currentColor; display: block; }
+  #scope-bar { display: flex; gap: .4rem; padding: .8rem 1.5rem 0; flex-wrap: wrap; align-items: center; }
+  #scope-bar .lbl { color: var(--dim); font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; margin-right: .4rem; }
+  .tab {
+    background: transparent; color: var(--dim); border: 1px solid var(--border); border-radius: 4px;
+    font: inherit; font-size: .78rem; padding: .3rem .8rem; cursor: pointer;
+  }
+  .tab:hover { color: var(--text); border-color: var(--dim); }
+  .tab[aria-selected="true"] { color: var(--cyan); border-color: var(--cyan); }
+  #chat { padding: 0 1.5rem 1rem; border-bottom: 1px solid var(--border); }
+  #chat-log { display: flex; flex-direction: column; gap: .5rem; margin: .6rem 0; }
+  #chat-log:empty { display: none; }
+  .bubble { padding: .45rem .7rem; border-radius: 4px; border: 1px solid var(--border); max-width: 70ch; white-space: pre-wrap; }
+  .bubble.you { align-self: flex-end; border-color: var(--dim); color: var(--text); }
+  .bubble.agent { border-color: var(--cyan); color: var(--text); }
+  .bubble.err { border-color: var(--red); color: var(--red); }
+  .bubble .who { display: block; font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); margin-bottom: .2rem; }
+  #chat-form { display: flex; gap: .6rem; }
+  #chat-input {
+    flex: 1; background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 4px; font: inherit; padding: .55rem .8rem;
+  }
+  #chat-input:focus { outline: none; border-color: var(--cyan); }
+  #chat-send {
+    background: transparent; color: var(--cyan); border: 1px solid var(--cyan); border-radius: 4px;
+    font: inherit; font-weight: 700; letter-spacing: .08em; padding: .55rem 1.2rem; cursor: pointer;
+  }
+  #chat-send:hover:not(:disabled) { background: var(--cyan); color: var(--bg); }
+  #chat-send:disabled, #chat-input:disabled { color: var(--dim); border-color: var(--dim); cursor: not-allowed; }
+  #chat-hint { color: var(--dim); font-size: .75rem; margin-top: .5rem; }
 </style>
 </head>
 <body>
 <header>
   <h1>STELLARPAY // MISSION CONTROL</h1>
   <span class="sub">live payment feed · stellar testnet</span>
+  <a id="gh" href="https://github.com/yripper/stellarpay" target="_blank" rel="noopener" title="Source on GitHub" aria-label="Source on GitHub">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+  </a>
   <div id="stats">
     <div><div class="n" id="stat-count">0</div><div class="l">payments</div></div>
     <div><div class="n" id="stat-volume">0.0000</div><div class="l">USDC volume</div></div>
@@ -69,9 +104,20 @@
   <span>Every payment in this feed settles into that Stellar account. stellar.expert is a third-party
     block explorer — it is not served by us. Click through and check the ledger yourself.</span>
 </div>
+<div id="scope-bar" role="tablist" aria-label="Which services the agent may buy from">
+  <span class="lbl">target</span>
+</div>
 <div id="unleash-bar">
   <button id="unleash">▶ UNLEASH THE AGENT</button>
   <span id="unleash-msg">An autonomous agent will buy intel across this economy, within its spend limits.</span>
+</div>
+<div id="chat">
+  <div id="chat-log" aria-live="polite"></div>
+  <form id="chat-form" autocomplete="off">
+    <input id="chat-input" type="text" maxlength="500" placeholder="Ask the agent for something it can buy…" aria-label="Ask the agent" />
+    <button id="chat-send" type="submit">ASK</button>
+  </form>
+  <div id="chat-hint">The agent answers by actually buying — every question it takes on spends real testnet USDC, within the same limits.</div>
 </div>
 <div id="empty">Waiting for payments…</div>
 <div id="feed"></div>
@@ -168,8 +214,13 @@
         buyerBalance.style.display = "";
         void refreshBuyerBalance();
       }
+      if (cfg && typeof cfg.repoUrl === "string" && cfg.repoUrl) {
+        document.getElementById("gh").href = cfg.repoUrl;
+      }
+      // Tabs come from the server so they can never drift from the scopes the agent accepts.
+      if (cfg && Array.isArray(cfg.scopes)) buildScopeTabs(cfg.scopes);
     })
-    .catch(() => { /* /config unreachable — both affordances just stay hidden */ });
+    .catch(() => { /* /config unreachable — the tabs fall back to the built-in default below */ });
 
   const source = new EventSource("/events");
   source.onmessage = (msg) => {
@@ -185,6 +236,52 @@
       if (ev.kind !== "agent-log") void refreshBuyerBalance();
     } catch { /* never let one bad event kill the feed */ }
   };
+
+  // --- Scope: which sellers this run (or chat turn) may buy from. "all" is the original
+  // whole-economy behavior; every other value narrows it to a single demo service so each
+  // example can be exercised on its own.
+  const scopeBar = document.getElementById("scope-bar");
+  const SCOPE_LABELS = {
+    "all": "ALL SERVICES",
+    "express-api": "express-api",
+    "hono-api": "hono-api",
+    "fastify-api": "fastify-api",
+    "mcp-server": "mcp-server",
+  };
+  const SCOPE_BLURBS = {
+    "all": "An autonomous agent will buy intel across this economy, within its spend limits.",
+    "express-api": "Scoped to express-api — a free route, an x402 route, and an MPP route with sponsored gas.",
+    "hono-api": "Scoped to hono-api — whale alerts, paywalled in a six-line diff.",
+    "fastify-api": "Scoped to fastify-api — live fee and congestion stats over MPP.",
+    "mcp-server": "Scoped to mcp-server — individually priced MCP tools, paid in-protocol.",
+  };
+  let currentScope = "all";
+
+  function buildScopeTabs(scopes) {
+    scopeBar.querySelectorAll(".tab").forEach((el) => el.remove());
+    scopes.forEach((scope) => {
+      const tab = document.createElement("button");
+      tab.className = "tab";
+      tab.type = "button";
+      tab.role = "tab";
+      tab.dataset.scope = scope;
+      tab.textContent = SCOPE_LABELS[scope] || scope;
+      tab.setAttribute("aria-selected", String(scope === currentScope));
+      tab.addEventListener("click", () => selectScope(scope));
+      scopeBar.appendChild(tab);
+    });
+  }
+
+  function selectScope(scope) {
+    currentScope = scope;
+    scopeBar.querySelectorAll(".tab").forEach((el) => {
+      el.setAttribute("aria-selected", String(el.dataset.scope === scope));
+    });
+    msg.textContent = SCOPE_BLURBS[scope] || ("Scoped to " + scope + ".");
+    chatInput.placeholder = scope === "all"
+      ? "Ask the agent for something it can buy…"
+      : "Ask the agent — it may only buy from " + scope + "…";
+  }
 
   const btn = document.getElementById("unleash");
   const msg = document.getElementById("unleash-msg");
@@ -204,12 +301,84 @@
   btn.addEventListener("click", async () => {
     btn.disabled = true;
     try {
-      const res = await fetch("/unleash", { method: "POST" });
-      if (res.status === 202) { msg.textContent = "Agent unleashed — watch the feed."; startCountdown(120); }
+      const res = await fetch("/unleash", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scope: currentScope }),
+      });
+      if (res.status === 202) { msg.textContent = "Agent unleashed on " + currentScope + " — watch the feed."; startCountdown(120); }
       else if (res.status === 429) { const body = await res.json(); msg.textContent = "Agent is cooling down."; startCountdown(body.retryAfterSeconds || 60); }
       else { msg.textContent = "Agent unavailable right now."; btn.disabled = false; }
     } catch { msg.textContent = "Request failed — try again."; btn.disabled = false; }
   });
+
+  // --- Chat: the same agent, but the visitor's question is the mission. The reply comes back
+  // in the response body; the buying itself is narrated into the feed above like any other run.
+  const chatForm = document.getElementById("chat-form");
+  const chatInput = document.getElementById("chat-input");
+  const chatSend = document.getElementById("chat-send");
+  const chatLog = document.getElementById("chat-log");
+
+  function bubble(kind, who, text) {
+    const el = document.createElement("div");
+    el.className = "bubble " + kind;
+    const label = document.createElement("span");
+    label.className = "who";
+    label.textContent = who;
+    el.appendChild(label);
+    // textContent, never innerHTML: the question is visitor input and the reply is model
+    // output — neither is ever treated as markup.
+    el.appendChild(document.createTextNode(text));
+    chatLog.appendChild(el);
+    el.scrollIntoView({ block: "nearest" });
+    return el;
+  }
+
+  const CHAT_ERRORS = {
+    cooldown: "Cooling down — each question spends real testnet funds, so there's a short gap between turns.",
+    run_in_progress: "The agent is mid-run right now. Give it a moment and ask again.",
+    agent_unreachable: "The agent isn't reachable right now.",
+    agent_not_configured: "No agent is wired up to this dashboard.",
+    empty_message: "Ask it something first.",
+    message_too_long: "That's too long — keep it under 500 characters.",
+  };
+
+  chatForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const question = chatInput.value.trim();
+    if (!question) return;
+    bubble("you", "you", question);
+    chatInput.value = "";
+    chatInput.disabled = true;
+    chatSend.disabled = true;
+    const pending = bubble("agent", "agent · " + currentScope, "thinking, and shopping…");
+    try {
+      const res = await fetch("/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: question, scope: currentScope }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok && typeof body.reply === "string") {
+        pending.lastChild.textContent = body.reply;
+      } else {
+        pending.className = "bubble err";
+        pending.lastChild.textContent = CHAT_ERRORS[body.error] || "That didn't work — try again in a moment.";
+      }
+    } catch {
+      pending.className = "bubble err";
+      pending.lastChild.textContent = "Request failed — try again.";
+    } finally {
+      chatInput.disabled = false;
+      chatSend.disabled = false;
+      chatInput.focus();
+    }
+  });
+
+  // Render the tabs immediately from the built-in list; /config replaces them with the
+  // server's own list when it answers, so the bar is never empty if that request fails.
+  buildScopeTabs(Object.keys(SCOPE_LABELS));
+  selectScope("all");
 </script>
 </body>
 </html>

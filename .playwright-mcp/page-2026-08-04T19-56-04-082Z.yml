@@ -1,0 +1,34 @@
+- generic [ref=e1]:
+  - banner [ref=e2]:
+    - heading "STELLARPAY // MISSION CONTROL" [level=1] [ref=e3]
+    - generic [ref=e4]: live payment feed · stellar testnet
+    - link "Source on GitHub" [ref=e5] [cursor=pointer]:
+      - /url: https://github.com/yripper/stellarpay
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - generic [ref=e10]: "0"
+        - generic [ref=e11]: payments
+      - generic [ref=e12]:
+        - generic [ref=e13]: "0.0000"
+        - generic [ref=e14]: USDC volume
+  - generic [ref=e15]:
+    - link "verify on-chain ↗" [ref=e16] [cursor=pointer]:
+      - /url: https://stellar.expert/explorer/testnet/account/GCZE7PQYJCF6BEQEDFG3OGAMFC6Z6JAVCCN6TZB24MJ6RM5DKSKQPBHT
+    - generic [ref=e17]: Every payment in this feed settles into that Stellar account. stellar.expert is a third-party block explorer — it is not served by us. Click through and check the ledger yourself.
+  - tablist "Which services the agent may buy from" [ref=e18]:
+    - generic [ref=e19]: target
+    - tab "ALL SERVICES" [ref=e20] [cursor=pointer]
+    - tab "express-api" [ref=e21] [cursor=pointer]
+    - tab "hono-api" [ref=e22] [cursor=pointer]
+    - tab "fastify-api" [ref=e23] [cursor=pointer]
+    - tab "mcp-server" [active] [selected] [ref=e24] [cursor=pointer]
+  - generic [ref=e25]:
+    - button "▶ UNLEASH THE AGENT" [ref=e26] [cursor=pointer]
+    - generic [ref=e27]: Scoped to mcp-server — individually priced MCP tools, paid in-protocol.
+  - generic [ref=e28]:
+    - generic [ref=e29]:
+      - textbox "Ask the agent" [ref=e30]:
+        - /placeholder: Ask the agent — it may only buy from mcp-server…
+      - button "ASK" [ref=e31] [cursor=pointer]
+    - generic [ref=e32]: The agent answers by actually buying — every question it takes on spends real testnet USDC, within the same limits.
+  - generic [ref=e33]: Waiting for payments…
