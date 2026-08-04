@@ -10,6 +10,9 @@ and the hub: four paid API services (later tasks) POST payment receipts to its `
 endpoint, and it fans them out to browsers over Server-Sent Events (SSE).
 `examples/express-api` is the second and the flagship seller: a "Stellar Intel" API that
 sells live Horizon-testnet data behind two paywalled routes, one per payment scheme.
+`examples/hono-api` is the third: a "whale alerts" API on `@stellarpay/hono` whose README's
+job is to prove the paywall is a 6-line diff onto a plain Hono app — one x402 route selling
+the 10 largest recent native-XLM payments on testnet.
 
 ## Structure
 
@@ -49,6 +52,24 @@ sells live Horizon-testnet data behind two paywalled routes, one per payment sch
 - `examples/express-api/src/main.ts` — entrypoint: `readEnv()` then `buildApp(env).listen()`.
 - `examples/express-api/test/{reportReceipt,intel}.test.ts` — unit tests for the reporter's
   wire format and failure-swallowing, and for the three fetchers via an injected `fetch`.
+- `examples/hono-api/src/env.ts` — `Env` type + `readEnv()`, copied per-service from
+  `examples/express-api/src/env.ts` with two changes: `required` is just `["DEMO_PAYTO"]`
+  (`env.ts:19`, no MPP scheme on this service) and the port default is `4602` (`env.ts:30`).
+  `Env` drops `mppSecret`/`sponsorSecret` entirely — this service never needs them
+  (`env.ts:9-15`).
+- `examples/hono-api/src/reportReceipt.ts` — byte-for-byte copy of
+  `examples/express-api/src/reportReceipt.ts`; see that entry above.
+- `examples/hono-api/src/whales.ts` — `Whale` type + `extractWhales()` (pure) and
+  `fetchWhales()` (network, injected `fetch`). Filters live Horizon `/payments` records down
+  to large native-XLM transfers.
+- `examples/hono-api/src/server.ts` — `buildApp(env): Hono`, the pure app factory that builds
+  the `StellarpayConfig`, mounts `stellarpayHono` before the routes, and registers the free
+  index/health routes plus the one paywalled whale-alerts route.
+- `examples/hono-api/src/main.ts` — entrypoint: `readEnv()`, `buildApp(env)`, then
+  `@hono/node-server`'s `serve({ fetch: app.fetch, port: env.port })`.
+- `examples/hono-api/test/whales.test.ts` — unit tests for `extractWhales`: threshold/sort/cap
+  behavior and survival of malformed records. `fetchWhales` (the network half) has no
+  automated test — see the Testing section below.
 
 ## Endpoints / Public Surface
 
@@ -92,6 +113,18 @@ Horizon failures map through both paid and free intel routes identically: `404` 
 unknown account or an empty asset record set, `502 {"error":"horizon_unavailable"}` for any
 other non-OK Horizon response (`intel.ts:15-20`).
 
+`examples/hono-api`'s HTTP surface (`examples/hono-api/src/server.ts:8-34`):
+
+- `GET /` — free. JSON service index: name, the one route with its price/scheme/description,
+  and a `diff` marketing line pointing at the README (`server.ts:21-27`).
+- `GET /healthz` — free. `200 { ok: true }` (`server.ts:28`).
+- `GET /alerts/whales` — **$0.01, x402**. The 10 largest native-XLM payments among the most
+  recent 200 payment operations on testnet, at/above a 10,000 XLM threshold
+  (`whales.ts:29-37`). Paywall key: `"GET /alerts/whales"` — an exact key, not a wildcard,
+  since the route has no path parameters (`server.ts:15`). A Horizon failure maps to `502
+  {"error":"horizon_unavailable"}` (`whales.ts:32`); an empty result set is a normal `200`
+  with `count: 0`, not an error.
+
 TS surface consumed by later tasks:
 
 - `buildApp(deps: Deps): Hono` (`examples/dashboard/src/server.ts:18`) — `Deps` = `{
@@ -112,6 +145,16 @@ TS surface consumed by later tasks:
 - `buildApp(env: Env): Express` (`examples/express-api/src/server.ts:10`).
 - `IntelResult` (`examples/express-api/src/intel.ts:8`) — `{ status: number; body:
   Record<string, unknown> }`, returned by all three fetchers.
+- `Whale` (`examples/hono-api/src/whales.ts:2`) — `{ amountXlm: string; from: string; to:
+  string; asset: "XLM"; at: string; tx: string; link: string }`.
+- `extractWhales(records: unknown[], minXlm: number, limit: number): Whale[]`
+  (`examples/hono-api/src/whales.ts:9`) — pure filter, no network; used directly by
+  `test/whales.test.ts`.
+- `fetchWhales(f?: typeof fetch): Promise<{ status: number; body: Record<string, unknown> }>`
+  (`examples/hono-api/src/whales.ts:30`) — the network half; `f` defaults to global `fetch`.
+- `buildApp(env: Env): Hono` (`examples/hono-api/src/server.ts:8`) — `Env` = `{ payTo: string;
+  facilitatorKey?: string; dashboardUrl?: string; ingestSecret?: string; port: number }`
+  (`examples/hono-api/src/env.ts:9-15`).
 
 ## Key Methods (`file:line`)
 
@@ -177,6 +220,28 @@ TS surface consumed by later tasks:
   as `undefined` in the config (`server.ts:22-23,31`). `onPayment` forwards every receipt to
   the reporter (`server.ts:34`). `app.use(stellarpayExpress(config))` is called **before**
   any route registration (`server.ts:38`).
+- `extractWhales(records, minXlm, limit)` (`examples/hono-api/src/whales.ts:9-25`) — for each
+  raw record, keeps it only if `type === "payment"` and `asset_type === "native"`
+  (`whales.ts:13`) and every one of `amount`/`from`/`to`/`created_at`/`transaction_hash` is
+  present and a string (`whales.ts:14-19`), then only if `Number(amount)` is finite and
+  `>= minXlm` (`whales.ts:20-21`). Survivors sort by `amount` descending and are capped to
+  `limit` (`whales.ts:24`). Malformed input (non-objects, `null`, missing fields) is filtered
+  out rather than thrown on — `asRec`/`str` narrow everything defensively (`whales.ts:5-6`).
+- `fetchWhales(f)` (`examples/hono-api/src/whales.ts:30-37`) — calls live
+  `GET https://horizon-testnet.stellar.org/payments?order=desc&limit=200`. A non-OK response
+  becomes `502 {"error":"horizon_unavailable"}` (`whales.ts:32`); otherwise the response's
+  `_embedded.records` are run through `extractWhales` with a hardcoded `minXlm: 10_000` and
+  `limit: 10` (`whales.ts:35`) and wrapped in `{ thresholdXlm, count, whales, source:
+  "horizon-testnet, live" }` (`whales.ts:36`). Neither threshold nor limit nor the record
+  window (200) is configurable via `Env` — changing them is a code change, not a config knob.
+- `buildApp(env)` (`examples/hono-api/src/server.ts:8-34`) — builds the reporter
+  (`server.ts:9`), then a `StellarpayConfig` with `facilitatorApiKey` spread in conditionally
+  off `env.facilitatorKey` (`server.ts:14`, same unset-optional-var pattern as express-api).
+  `onPayment` forwards every receipt to the reporter (`server.ts:16`).
+  `app.use("*", stellarpayHono(config))` is called **before** any route registration
+  (`server.ts:19-20`). No `mppSecretKey`/`sponsorSecret`/`rpcUrl` — this service only uses the
+  x402 scheme, which needs none of them (`packages/core/src/schemes/x402.ts` never reads
+  `rpcUrl`).
 
 ## Dependencies
 
@@ -202,6 +267,18 @@ TS surface consumed by later tasks:
 - `tsx` (^4.19.0) — runtime dependency, same no-build-step rationale as the dashboard.
 - No HTTP client dependency: Horizon is reached through the platform's global `fetch`, and
   the dashboard through the same (both injectable for tests).
+
+`examples/hono-api` (`examples/hono-api/package.json:12-19`):
+
+- `hono` (^4) + `@hono/node-server` (^2.0.12) — same versions/roles as the dashboard above.
+- `@stellarpay/hono` (`workspace:*`) — `stellarpayHono(config)` returns a Hono
+  `MiddlewareHandler` (`packages/hono/src/index.ts:5`).
+- `@stellarpay/core` (`workspace:*`) — `StellarpayConfig` only, imported as a type
+  (`server.ts:3`).
+- `tsx` (^4.19.0) — runtime dependency, same no-build-step rationale as the other examples.
+- No HTTP client dependency: Horizon and the dashboard are both reached through the platform's
+  global `fetch` (`fetchWhales`'s `f` param and `reportReceipt.ts`'s `doFetch`, both
+  injectable for tests).
 
 ## Gotchas & Invariants
 
@@ -305,6 +382,42 @@ TS surface consumed by later tasks:
   a scheme module per configured scheme — so an invalid config throws synchronously from
   `buildApp()`, before `listen()`.
 
+`examples/hono-api`:
+
+- **Live Horizon `/payments` records match this service's field assumptions exactly** —
+  unlike `/assets` above. Confirmed 2026-08-04 by curling
+  `https://horizon-testnet.stellar.org/payments?order=desc&limit=200`: native payment records
+  carry `type: "payment"`, `asset_type: "native"`, `amount` (decimal string, e.g.
+  `"2.0000000"`), `from`, `to`, `created_at`, and `transaction_hash` — every field
+  `extractWhales` reads (`whales.ts:13-19`) is present and correctly named. No adaptation was
+  needed here; do not assume this generalizes to other Horizon endpoints (see the `/assets`
+  gotcha above).
+- **A live `count: 0` response is normal, not a bug.** Of the 200 most recent payment
+  operations sampled 2026-08-04, only 25 were native payments and the largest was ~80 XLM —
+  far under the 10,000 XLM threshold. `GET /alerts/whales` legitimately answers `200
+  {"thresholdXlm":10000,"count":0,"whales":[],"source":"horizon-testnet, live"}` whenever no
+  single payment in the current 200-op window clears the bar. Don't "fix" this by lowering the
+  threshold to make demos look busier — it's real data, and the brief fixed the threshold at
+  10,000.
+- **Hono catches async-handler rejections; Express 4 does not.** Verified both by reading
+  `hono-base.js`'s `#dispatch()` (`node_modules/.pnpm/hono@4.12.33/node_modules/hono/dist/
+  hono-base.js`) — the single-handler and composed-middleware paths both `.catch((err) =>
+  this.#handleError(err, c))` a rejected handler promise, and the default `errorHandler`
+  answers `500 "Internal Server Error"` — and empirically: a handler that `await fetch()`s an
+  unreachable host and never catches returned `500` via `app.request()`, with the process
+  still alive afterward. Unlike `examples/express-api`'s `intel()` adapter
+  (`server.ts:51-64`, gotcha above), **`GET /alerts/whales` needs no rejection-to-502
+  adapter** — a Horizon outage inside `fetchWhales()`'s unguarded `await f(...)` still yields
+  a clean `500` from Hono's own default error handler, and the server keeps serving other
+  requests. This is a deliberate difference from the Express example, not an oversight: adding
+  an adapter here would be redundant machinery.
+- **Threshold (10,000 XLM), cap (10), and scan window (200 most recent payment ops) are all
+  hardcoded inside `fetchWhales`** (`whales.ts:35`), not `Env` fields. A later task wanting a
+  different threshold changes the source, not `.env`.
+- **`extractWhales` is exported and unit-tested directly; `fetchWhales` is not.** The network
+  half is exercised only by the manual live-verification procedure below — there is no
+  `test/` coverage for the `502` mapping or the `_embedded.records` unwrap.
+
 ## Testing
 
 - `examples/dashboard/test/buffer.test.ts` — seq assignment/monotonicity and
@@ -349,27 +462,56 @@ TS surface consumed by later tasks:
   `createPayingFetch({ secret, network: "stellar:testnet", rpcUrl })` from
   `@stellarpay/client` (the pattern in `scripts/smoke.ts:283-293`) and read the dashboard's
   `/events` stream to confirm both receipts arrived.
+- `examples/hono-api/test/whales.test.ts` — `extractWhales` via two cases: mixed records
+  (below-threshold, above-threshold, `create_account`, a non-native asset) filtered, sorted
+  descending, and capped to `limit`; and survival of malformed input (`null`, a number, `{}`,
+  a `payment`-typed record missing every other field) → `[]`. No test file covers `fetchWhales`
+  or `buildApp()` — out of the brief's file list (`test/whales.test.ts` only).
+- Run: `pnpm --filter @stellarpay-examples/hono-api test`. Same root-suite caveat as above:
+  `pnpm test` from repo root does not include `examples/*`.
+- Live verification of `examples/hono-api` is not covered by any automated test — same
+  testnet-funds requirement as express-api. Manual procedure: run the dashboard on `:4600` and
+  the API on `:4602` with `DASHBOARD_URL`/`INGEST_SECRET` pointing at it, curl `/` and
+  `/healthz`, curl `/alerts/whales` bare to see the `402`, then drive it through
+  `createPayingFetch({ secret, network: "stellar:testnet", rpcUrl })` and read the dashboard's
+  `/events` stream to confirm the receipt arrived.
 
 ## Verified Against
 
 - Source read and line numbers confirmed 2026-08-04 against the current working tree
   (`examples/dashboard/src/{buffer,cooldown,ingest,server,main}.ts`,
-  `examples/express-api/src/{env,reportReceipt,intel,server,main}.ts`), plus the cross-package
+  `examples/express-api/src/{env,reportReceipt,intel,server,main}.ts`,
+  `examples/hono-api/src/{env,reportReceipt,whales,server,main}.ts`), plus the cross-package
   citations into `packages/core/src/{config,router,stellarpay,types}.ts`,
-  `packages/core/src/schemes/mppCharge.ts`, and `packages/express/src/index.ts`.
+  `packages/core/src/schemes/{mppCharge,x402}.ts`, `packages/express/src/index.ts`, and
+  `packages/hono/src/index.ts`.
 - `hono` resolved at `4.12.33`, `@hono/node-server` at `2.0.12`, `express` at `4.22.2` in
   `node_modules` — all match the versions this doc's line citations were checked against.
-- All 21 dashboard tests pass (`buffer`: 3, `cooldown`: 1, `ingest`: 9, `server`: 8) and all
-  9 express-api tests pass (`reportReceipt`: 3, `intel`: 6); the repo-root `pnpm typecheck`
-  (`pnpm -r typecheck`, 9 of 10 workspace projects — every package plus both examples; the
-  root itself declares no `typecheck` script) succeeds; the root `pnpm test` suite
-  (`packages/*`, 88 tests) is unaffected.
+- All 21 dashboard tests pass (`buffer`: 3, `cooldown`: 1, `ingest`: 9, `server`: 8), all
+  9 express-api tests pass (`reportReceipt`: 3, `intel`: 6), and both hono-api tests pass
+  (`whales`: 2); the repo-root `pnpm typecheck` (`pnpm -r typecheck`, every package plus all
+  three examples; the root itself declares no `typecheck` script) succeeds; the root `pnpm
+  test` suite (`packages/*`, 88 tests) is unaffected — `examples/*` tests run only via their
+  own per-package filter, never the root suite.
 - Horizon response shapes for `/assets`, `/order_book`, `/accounts`, and
   `/accounts/{id}/payments` re-confirmed 2026-08-04 by curling live
   `horizon-testnet.stellar.org` — this is where the `balances`/`accounts` vs
-  `amount`/`num_accounts` gotcha above was caught.
+  `amount`/`num_accounts` gotcha above was caught. `/payments` re-confirmed the same day: live
+  native-payment records match `whales.ts`'s field assumptions exactly (no gotcha there).
 - `examples/express-api` verified live end-to-end 2026-08-04 on Stellar testnet: free routes
   returned real Horizon data, both paid routes issued genuine `402`s (x402 →
   `payment-required` header; mpp-charge → `WWW-Authenticate: Payment … intent="charge"`,
   both quoting `200000` base units = `$0.02` USDC), and both settled to `200` through
   `createPayingFetch`, with both receipts arriving on the dashboard's `/events` feed.
+- `examples/hono-api` verified live end-to-end 2026-08-04 on Stellar testnet: `GET /` and `GET
+  /healthz` returned the expected JSON, `GET /alerts/whales` bare issued a genuine `402` with
+  a `PAYMENT-REQUIRED` challenge header quoting `100000` base units = `$0.01` USDC, and the
+  route settled to `200 {"thresholdXlm":10000,"count":0,"whales":[],"source":"horizon-testnet,
+  live"}` through `createPayingFetch` (a live, correctly-shaped answer — `count: 0` because no
+  single native payment in the sampled window cleared 10,000 XLM, not a bug), with the receipt
+  arriving on the dashboard's `/events` feed carrying the real payer and `txHash`.
+- Hono's automatic-500-on-rejection behavior confirmed both by reading
+  `node_modules/.pnpm/hono@4.12.33/node_modules/hono/dist/hono-base.js`'s `#dispatch()` and by
+  running a throwaway handler that `await fetch()`s an unreachable host: `app.request()`
+  returned `500` and the process stayed alive, in contrast to `examples/express-api`'s
+  Express-4 finding above.
