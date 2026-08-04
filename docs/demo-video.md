@@ -85,19 +85,33 @@ the reliable, always-present proof that the guardrail exists and is being enforc
 ## Shot 5 — On-chain proof (2:15–2:40)
 
 Screen: click a **"settlement ↗"** link on one of the feed rows from Shot 4 → stellar.expert
-transaction page.
+transaction page. Then go back to the dashboard and click the **"verify on-chain ↗"** bar
+above the feed → stellar.expert account page.
 
 Say: "Not a simulation — here's the transaction on Stellar testnet, fee-sponsored through
-OpenZeppelin's facilitator."
+OpenZeppelin's facilitator. And I'm not picking a favorable example: every payment in this
+feed, x402 or mpp, settles into that one account — click through and check the ledger
+yourself, that page isn't served by us. Same story for the buyer's balance up in the header:
+that number comes straight from Stellar's Horizon API, fetched by your own browser, not by
+our backend — watch it tick down as the agent spends."
 
-*Note for the operator:* the "settlement ↗" link only renders on rows that carry a `txHash`
-(`examples/dashboard/public/index.html:84-93`) — that's the **x402** legs only. On screen
-those rows read `GET /report/*` (express-api) or `GET /alerts/whales` (hono-api), and show
-the amber `x402` scheme badge. **mpp-charge** rows — `GET /deep-dive/*` (express-api), `GET
-/stats/fees` (fastify-api), and the MCP tool names `account_summary` / `whale_watch`
-(mcp-server, `examples/mcp-server/src/mcp.ts:33` maps the tool name straight into the row's
-route field) — carry the cyan `mpp` badge and render `—` instead of a link; there's nothing
-to click on those. Pick an amber `x402` row.
+*Note for the operator:* the "settlement ↗" link renders on any row that carries a `txHash`
+(`examples/dashboard/public/index.html:103,112`). As of the mpp-charge `txHash` fix
+(`packages/core/src/schemes/mppCharge.ts:16-39,79,84-85` — `txHashFromReceiptHeader` decodes
+the mpp `Payment-Receipt` header's `reference` field, which `@stellar/mpp`'s server sets to
+the broadcast transaction's own hash), amber `x402` rows (`GET /report/*`, `GET
+/alerts/whales`) **and** cyan `mpp` rows routed through `@stellarpay/core`'s mpp-charge scheme
+(`GET /deep-dive/*` on express-api, `GET /stats/fees` on fastify-api) are now equally fair
+game to click — pick whichever row is on screen. **The MCP tool rows are the one exception:**
+`account_summary`/`whale_watch` go through the separate `@stellarpay/mcp` package
+(`packages/mcp/src/server.ts`), whose `ToolPaymentReceipt` type has no `txHash` field at all
+(untouched by this fix) — those rows still render `—` instead of a link; don't click on those
+expecting one. The "verify on-chain ↗" bar and the buyer-balance panel
+(`examples/dashboard/public/index.html`) only render when the dashboard's `DEMO_PAYTO` /
+`DEMO_BUYER_PUBLIC` env vars are set on the live Railway deployment (see
+`examples/dashboard/README.md`'s Env vars section) — confirm both are set before recording
+this shot; if either is unset its affordance stays invisible and this narration won't match
+what's on screen.
 
 ## Shot 6 — Close (2:40–3:00)
 
