@@ -61,6 +61,7 @@ async function facilitatorKey(): Promise<string> {
 async function establishTrustline(buyer: Keypair, issuer: string): Promise<void> {
   console.log(`  establishing USDC trustline (issuer ${issuer.slice(0, 6)}…) via OZ Channels`);
   const res = await fetch(`${HORIZON}/accounts/${buyer.publicKey()}`);
+  if (!res.ok) throw new Error(`Horizon error ${res.status} for ${buyer.publicKey()}`);
   const data = asRec(await res.json());
   const account = new Account(buyer.publicKey(), String(data["sequence"]));
   const tx = new TransactionBuilder(account, { fee: "100000", networkPassphrase: Networks.TESTNET })
@@ -96,6 +97,11 @@ async function main(): Promise<void> {
 
   const buyerState = rows[0]!.state;
   const issuer = process.env["DEMO_USDC_ISSUER"];
+  // Only a genuine establishTrustline failure sets this — not env-gated, and trustline already
+  // present, are both success (skipping isn't failing). Mirrors scripts/smoke.ts's exitCode
+  // pattern (smoke.ts:298-302): the shell must see a real failure even though the operator
+  // already saw the full picture printed below.
+  let trustlineFailed = false;
   if (issuer && !buyerState.usdcLines.some((l) => l.issuer === issuer)) {
     // Same degrade-gracefully pattern as scripts/smoke.ts's runLeg (smoke.ts:194-209): a
     // live OZ Channels submission is exactly the kind of risky network call that shouldn't
@@ -105,11 +111,16 @@ async function main(): Promise<void> {
       await establishTrustline(buyer, issuer);
       rows[0]!.state = await loadAccount(buyer.publicKey());
     } catch (err) {
+      // Deliberate: log only err.message, never the raw error object. A PluginTransportError
+      // from @openzeppelin/relayer-plugin-channels can carry the underlying axios error on
+      // errorDetails, which embeds the Channels API key in config.headers.Authorization —
+      // logging the raw error would leak that credential.
       console.error(`  trustline establishment failed: ${err instanceof Error ? err.message : String(err)}`);
       console.error(
         "  Re-run to retry. If it keeps failing, check https://status.channels.openzeppelin.com, or establish\n" +
           "  the trustline yourself (e.g. `stellar tx new change-trust`) — the buyer's secret never leaves this machine.",
       );
+      trustlineFailed = true;
     }
   }
 
@@ -131,6 +142,8 @@ async function main(): Promise<void> {
   } else {
     console.log("\nAll set — run `pnpm smoke` for a full paid round-trip before demoing.");
   }
+
+  process.exit(trustlineFailed ? 1 : 0);
 }
 
 await main();
