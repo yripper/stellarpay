@@ -15,6 +15,15 @@ BUYER_ALIAS="${SPP_BUYER_ACCOUNT:-spp-buyer}"
 
 mkdir -p "${SPP_DATA_DIR:-/data/spp}"
 
+# `spp` resolves RPC + passphrase by asking the Stellar CLI for a network named "testnet". A
+# developer machine usually has one configured; a fresh container does not necessarily, and the
+# lookup failing is indistinguishable in the logs from onboarding failing for any other reason.
+# Idempotent: re-adding an existing network is a no-op we do not want to abort on.
+stellar network add testnet \
+  --rpc-url "${STELLAR_RPC_URL:-https://soroban-testnet.stellar.org}" \
+  --network-passphrase "Test SDF Network ; September 2015" >/dev/null 2>&1 || true
+echo "network testnet: $(stellar network ls 2>/dev/null | grep -c '^testnet$') entry"
+
 # Write the identity TOML directly. `stellar keys add --secret-key` reads the key from a TTY
 # (it fails with "secret input error" on a pipe), so there is no non-interactive CLI path — but
 # a file containing `secret_key = "S..."` resolves identically, verified against v23. The secret
