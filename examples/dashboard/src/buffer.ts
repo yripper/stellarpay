@@ -22,7 +22,11 @@ export function createFeedBuffer(capacity: number) {
       return event;
     },
     list(): readonly FeedEvent[] {
-      return events;
+      // Snapshot, not a live view: /events (src/server.ts:54) iterates this across `await`
+      // boundaries during SSE replay, and a concurrent /ingest's capacity eviction
+      // (events.shift() above) mutating the same backing array mid-iteration would skip an
+      // element or end the loop early, silently dropping events from the replay.
+      return [...events];
     },
   };
 }

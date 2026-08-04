@@ -70,7 +70,7 @@ TS surface consumed by later tasks:
   `{ check(), trigger() }`. `check()` returns `{ ok: true }` until `trigger()` has been
   called and less than `intervalMs` has elapsed since, in which case it returns `{ ok:
   false, retryAfterSeconds }` with `retryAfterSeconds = Math.ceil(remainingMs / 1000)`
-  (`cooldown.ts:5-10`). `now` is injectable — `buildApp()` uses `Date.now` by default, tests
+  (`cooldown.ts:5-11`). `now` is injectable — `buildApp()` uses `Date.now` by default, tests
   pass a fake clock via `deps.cooldown`.
 - `parseIngestBody(body: unknown)` (`examples/dashboard/src/ingest.ts:8-21`) — returns the
   parsed `Omit<FeedEvent, "seq" | "at">` or `undefined`. Rejects non-objects, empty
