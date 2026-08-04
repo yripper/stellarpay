@@ -21,10 +21,18 @@ RUN git clone --no-checkout "$SPP_REPO" /spp-src \
 WORKDIR /spp-src/vendor/stellar-private-payments
 RUN cargo build --release --bin spp
 
-# Keep only the policy circuits this pool proves against. The selective-disclosure artifacts in
-# the same directory are ~25MB and are never loaded by deposit/transfer.
+# Keep only the policy circuits this pool proves against — the selective-disclosure artifacts
+# are never loaded by deposit/transfer. Two sources, BOTH required by the CLI prover:
+#   * sdk/web/dist/circuits — the wasm witness generators + r1cs
+#   * deployments/testnet/circuit_keys — the Groth16 proving keys (policy_tx_2_2_A_proving_key.bin
+#     and friends). The web dist does NOT carry these; without them `spp transfer` dies with
+#     "read policy_tx_2_2_A proving key ... (run the installer or build circuits)". Locally that
+#     is masked by the CLI's fallback to a path inside its own source tree, which the runtime
+#     image below deliberately does not have.
 RUN mkdir -p /circuits \
-  && cp sdk/web/dist/circuits/policy_tx_2_2* sdk/web/dist/circuits/artifact_hashes.json /circuits/
+  && cp sdk/web/dist/circuits/policy_tx_2_2* sdk/web/dist/circuits/artifact_hashes.json /circuits/ \
+  && cp deployments/testnet/circuit_keys/policy_tx_2_2* /circuits/ \
+  && test -f /circuits/policy_tx_2_2_A_proving_key.bin
 
 FROM node:22-bookworm-slim
 
