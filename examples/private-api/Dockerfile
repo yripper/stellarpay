@@ -31,12 +31,17 @@ FROM node:22-bookworm-slim
 ARG STELLAR_CLI_VERSION=23.1.4
 ENV DEBIAN_FRONTEND=noninteractive
 
+# libdbus-1-3 is NOT optional: the Stellar CLI links against it for its OS secure-store
+# integration, and node:slim omits it. Without it every `stellar` invocation dies with
+# "error while loading shared libraries: libdbus-1.so.3" — which surfaces as an unrelated-looking
+# "identity did not resolve", since the CLI never gets far enough to read the identity at all.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl \
+  && apt-get install -y --no-install-recommends ca-certificates curl libdbus-1-3 \
   && curl -fsSL "https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
      | tar -xz -C /usr/local/bin stellar \
   && chmod +x /usr/local/bin/stellar \
-  && apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+  && apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* \
+  && stellar --version
 
 RUN corepack enable
 
