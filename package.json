@@ -8,11 +8,13 @@
     "build": "pnpm -r build",
     "test": "vitest run --passWithNoTests",
     "typecheck": "pnpm -r typecheck",
-    "smoke": "tsx scripts/smoke.ts"
+    "smoke": "tsx scripts/smoke.ts",
+    "setup-demo": "tsx scripts/setup-demo.ts"
   },
   "devDependencies": {
     "@hono/node-server": "^2.0.12",
     "@stellar/mpp": "^0.7.1",
+    "@stellar/stellar-sdk": "16.2.0",
     "@stellarpay/client": "workspace:*",
     "@stellarpay/core": "workspace:*",
     "@stellarpay/hono": "workspace:*",

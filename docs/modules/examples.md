@@ -29,6 +29,13 @@ testnet wallet that shops across all five other services on demand — a Claude 
 as `agent-log` events. It is what the dashboard's UNLEASH button drives, and the one service
 that consumes the SDK rather than exposing it.
 
+The repo-root `scripts/` directory hosts two ops companions consumed by every example service
+above, not published as a package: `scripts/smoke.ts` (a live payment round-trip test — see
+its citations throughout this doc) and `scripts/setup-demo.ts` (idempotent demo-identity
+provisioning: friendbot-funds the buyer/payTo accounts, prints an XLM/USDC balances table, and
+optionally establishes the buyer's USDC trustline fee-free via OZ Channels). Both read the same
+`SMOKE_*` env vars the demo services later map to `DEMO_*` at deploy time.
+
 ## Structure
 
 - `examples/dashboard/src/buffer.ts` — `FeedEvent` type + `createFeedBuffer()`, a
@@ -162,6 +169,10 @@ that consumes the SDK rather than exposing it.
   and the 5-second boot run (`main.ts:112`).
 - `examples/agent/test/run.test.ts` — the orchestration contract, `scriptedTour`'s per-item
   isolation, and the purchase summarizers (see Testing below).
+- `scripts/setup-demo.ts` — the demo-identity ops script (repo root, not inside `examples/`).
+  Not a workspace package — run via the root `pnpm setup-demo` script
+  (`package.json:12` → `tsx scripts/setup-demo.ts`). No `test/` file; verified live only (see
+  Testing below).
 
 ## Endpoints / Public Surface
 
@@ -544,6 +555,23 @@ TS surface consumed by later tasks:
   `void close()` would leave a rejected teardown promise unhandled, and it fires outside the
   `try/catch`), then `await server.connect(transport)` and
   `await transport.handleRequest(req, res, req.body)`.
+- `main()` (`scripts/setup-demo.ts:75-134`) — loads `.env` the same guarded way as
+  `scripts/smoke.ts:39-44`; reads `SMOKE_BUYER_SECRET`/`SMOKE_PAYTO` with `DEMO_*` fallbacks
+  (`setup-demo.ts:76-77`); friendbot-funds the buyer and payTo accounts if either doesn't yet
+  exist (`setup-demo.ts:85-95`); if `DEMO_USDC_ISSUER` is set and the buyer lacks that
+  trustline, builds+signs a `ChangeTrust` and submits it via `submitViaChannels`
+  (`setup-demo.ts:97-114`, `.setTimeout(30)` at `setup-demo.ts:68` — Channels rejects longer
+  timebounds); prints the balances table (`setup-demo.ts:116-120`, ✅/⚠️ per account existence,
+  `no USDC trustline` distinguished from a real `0.0000000 USDC (issuer…)` line so a
+  trustline-but-empty account never reads as "missing"); closes with either manual
+  faucet/trustline instructions or `All set — run \`pnpm smoke\`` (`setup-demo.ts:122-133`).
+  Never prints a secret — accounts are referenced only by public key throughout.
+- `establishTrustline(buyer, issuer)` (`scripts/setup-demo.ts:61-73`) — its one call site
+  (`setup-demo.ts:104-113`) is wrapped in `try/catch`, the same degrade-gracefully pattern as
+  `scripts/smoke.ts`'s `runLeg` (`smoke.ts:194-209`): a failed Channels submission prints an
+  actionable message and lets the balances table + manual-fallback guidance still render,
+  rather than crashing the whole script on a raw stack trace. See the Channels gotcha below —
+  this path was exercised live and does fail in practice.
 
 ## Dependencies
 
@@ -636,8 +664,43 @@ TS surface consumed by later tasks:
 - `tsx` (^4.19.0) — runtime dependency, same no-build-step rationale as the other examples.
 - No seller adapter (`@stellarpay/express|hono|fastify`): this service has no paywall.
 
+`scripts/setup-demo.ts` (root `package.json:14-27`, not a workspace package):
+
+- `@stellar/stellar-sdk` (pinned `16.2.0`) — added as a **direct root devDependency** by this
+  script (`package.json:17`). Previously the root only carried the version via
+  `pnpm.overrides` (`package.json:28`) with no workspace-root package actually importing it
+  directly, so `@stellar/stellar-sdk` was not resolvable from `scripts/` until this dependency
+  was added — confirmed by `node -e "require.resolve('@stellar/stellar-sdk')"` failing from
+  the repo root before the change and succeeding after.
+- `@stellar/mpp` (^0.7.1) — `USDC_SAC_TESTNET` only, printed in the manual-faucet guidance.
+- `@stellarpay/shared` (`workspace:*`) — `submitViaChannels` (`packages/shared/src/channels.ts:22`,
+  re-exported at `packages/shared/src/index.ts:7`).
+- `tsx` (^4.19.0) — runtime dependency, same no-build-step rationale as every example above.
+- Both already-root devDependencies before this task; no new external package.
+
 ## Gotchas & Invariants
 
+- **`scripts/setup-demo.ts`'s OZ Channels trustline path failed live, three-for-three, on
+  the day this was written (2026-08-04).** `establishTrustline` (`setup-demo.ts:61-73`) builds
+  a valid `ChangeTrust` XDR — independently confirmed by submitting the byte-identical
+  transaction directly via `rpc.Server.sendTransaction` (bypassing Channels entirely), which
+  returned `status: "SUCCESS"` with a real hash. But routing the same signed XDR through
+  `submitViaChannels` (`packages/shared/src/channels.ts:22`) against
+  `https://channels.openzeppelin.com/testnet` failed all three times with
+  `PluginExecutionError` / `errorDetails.code: "ONCHAIN_FAILED"`, `reason: "200000"`, `hash:
+  null` — across three distinct fresh throwaway accounts and two distinct USDC issuers, so
+  it is not account- or issuer-specific. Per the OpenZeppelin Channels error table,
+  `ONCHAIN_FAILED` means "do NOT fall back" (unlike `FEE_LIMIT_EXCEEDED`, which
+  `submitViaChannels` already handles by falling back to a direct self-paid submission —
+  `channels.ts:39`), so this is not a case the shared helper is expected to route around; the
+  cause is presumed to be Channels' testnet relay specifically, not this script's transaction
+  construction. `establishTrustline`'s one call site (`setup-demo.ts:104-113`) is wrapped in
+  `try/catch` so this degrades to an actionable console message instead of a raw crash — see
+  the Testing section below for the exact reproduction. Re-check this against the live service
+  before relying on the trustline auto-establishment path for a real deploy; the manual
+  `stellar tx new change-trust` fallback the failure message points to is confirmed to exist
+  (`stellar --version`: `27.0.0`) and does work (that's how the live verification below
+  actually got a trustline established).
 - **In-memory only, by design.** `createFeedBuffer` and `createCooldown` hold state in
   process memory. A restart loses feed history and resets the cooldown. This is intentional
   demo infra, not a bug — do not add persistence without discussing the tradeoff.
@@ -1082,6 +1145,22 @@ TS surface consumed by later tasks:
   the bearer token), and read `/events`. Both run modes must be exercised — unset
   `ANTHROPIC_API_KEY` to force the scripted tour — and the spend limits must be temporarily
   tightened to see a refusal narrated. See Verified Against for the recorded results.
+- `scripts/setup-demo.ts` has no automated test — it is a live-network ops script (friendbot,
+  Horizon, OZ Channels), same posture as `scripts/smoke.ts`. `pnpm typecheck` does not cover it
+  either: `tsconfig.scripts.json` exists but nothing wires it into any `package.json` script
+  (checked directly — `grep -rn tsconfig.scripts` across the repo returns only the file
+  itself), same as `scripts/smoke.ts` before it. Verified instead with `tsc -p
+  tsconfig.scripts.json --noEmit` run by hand, and five categories of live run against Stellar
+  testnet on 2026-08-04: (1) both identities already funded — two ✅ rows, real XLM/USDC
+  balances, closing `All set` line; (2) a not-yet-funded `payTo` — the `funding … via
+  friendbot` line appears, then the account renders funded; (3) a funded-but-trustline-less
+  account — renders `no USDC trustline`, distinguishable from (4) a real trustline at a `0`
+  balance (the `DEMO_BUYER_SECRET` account) — renders `0.0000000 USDC (issuer…)`, plus the
+  manual-faucet instructions block including a correctly-printed `USDC_SAC_TESTNET`; and (5)
+  the env-gated trustline path itself, which surfaced the Channels gotcha above. No secret
+  value appeared in any of the ~10 runs performed (only `G...` public keys, truncated
+  6-character issuer prefixes, balances, and one error's numeric `reason` field) — checked by
+  reading every line of output before treating it as verified.
 
 ## Verified Against
 
@@ -1236,3 +1315,32 @@ TS surface consumed by later tasks:
     localhost is the bare string `localhost` — so the refusal line names the host, not the
     route, for MPP blocks. x402 blocks carry the full URL. Truthful either way, less specific
     for one of the two legs.
+- `scripts/setup-demo.ts` (`package.json:12,17`, `.env.example`) added 2026-08-04, source read
+  against the current working tree and `node_modules/.pnpm/@stellar+stellar-sdk@16.2.0`'s
+  `.d.ts` files directly (not assumed): `Account(accountId: string, sequence: string)`
+  (`lib/esm/base/account.d.ts:21`), `Keypair.fromSecret(secret): Keypair` /
+  `Keypair.prototype.publicKey(): string` (`lib/esm/base/keypair.d.ts:37,84`),
+  `Operation.changeTrust(opts: ChangeTrustOpts)` (`lib/esm/base/operations/change_trust.d.ts:13`),
+  `Networks.TESTNET` (`lib/esm/base/network.d.ts:11`), and `TransactionBuilder`'s constructor
+  + `.setTimeout()` (`lib/esm/base/transaction_builder.d.ts:150,232`) all match the brief's
+  code exactly. `@stellar/stellar-sdk` was **not** resolvable from the repo root before this
+  task (only present via `pnpm.overrides` version pinning, with no root-level import); added as
+  a direct root devDependency and confirmed resolvable after `pnpm install`.
+  `pnpm typecheck` (`pnpm -r typecheck`, unaffected — `scripts/` isn't in its scope, same as
+  `scripts/smoke.ts`) and `pnpm test` (88 tests, `packages/*` only) both still pass unchanged;
+  `tsc -p tsconfig.scripts.json --noEmit` passes standalone for `scripts/`.
+  Five real run categories against Stellar testnet, detailed in the Testing section above:
+  already-funded (two ✅ rows, real balances, `All set`), not-yet-funded (`friendbot` line then
+  a funded row), trustline-absent (`no USDC trustline`), trustline-present-zero-balance (the
+  `DEMO_BUYER_SECRET` account — `0.0000000 USDC (GBBD47…)`, confirming the two states render
+  distinguishably as required), and the env-gated trustline path (which surfaced the Channels
+  gotcha above — reproduced on three independent fresh accounts, and confirmed **not** a bug in
+  this script's transaction construction by submitting the identical signed XDR directly via
+  `rpc.Server.sendTransaction`, which returned `status: "SUCCESS"` with a real hash). No secret
+  appeared in any run's stdout/stderr — traced every code path that touches `buyerSecret`
+  (`Keypair.fromSecret` at `setup-demo.ts:82`, `tx.sign(buyer)` at `setup-demo.ts:70`) and
+  confirmed the `Keypair` object itself is never logged, only `.publicKey()` and `.slice(0,6)`
+  prefixes of public keys/issuers/tx hashes; the one caught-error path (`establishTrustline`'s
+  `try/catch`) prints only `err.message`, which across `PluginExecutionError` and the plain
+  `Error` thrown by `submitViaChannels`'s direct-submit fallback (`channels.ts:14`) is always a
+  numeric code or a public `resultXdr` string, never anything derived from the signing key.
