@@ -17,11 +17,13 @@ if (!ingestSecret) {
 }
 
 const html = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+const landingHtml = readFileSync(new URL("../public/landing.html", import.meta.url), "utf8");
 const port = Number(process.env["PORT"] ?? 4600);
 const app = buildApp({
   ingestSecret,
   agentUrl: process.env["AGENT_URL"] || undefined,
   html,
+  landingHtml,
   payTo: process.env["DEMO_PAYTO"] || undefined,
   buyerPublic: process.env["DEMO_BUYER_PUBLIC"] || undefined,
 });

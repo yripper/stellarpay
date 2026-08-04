@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>stellarpay — machine payments on Stellar, in one line</title>
+<style>
+  :root {
+    --bg: #0a0e14; --panel: #11161f; --border: #1d2633; --text: #c9d4e3;
+    --dim: #5c6b80; --green: #3ddc84; --cyan: #4dd0e1; --amber: #ffb74d; --violet: #b388ff;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 15px/1.65 "SF Mono", ui-monospace, Menlo, monospace; }
+  a { color: var(--cyan); }
+  .wrap { max-width: 60rem; margin: 0 auto; padding: 0 1.5rem; }
+  header { border-bottom: 1px solid var(--border); }
+  header .wrap { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.5rem; flex-wrap: wrap; }
+  header h1 { font-size: .95rem; letter-spacing: .15em; color: var(--green); font-weight: 600; }
+  header nav { margin-left: auto; display: flex; align-items: center; gap: 1.2rem; font-size: .82rem; }
+  header nav a { color: var(--dim); text-decoration: none; }
+  header nav a:hover { color: var(--text); }
+  #gh { display: inline-flex; align-items: center; }
+  #gh svg { width: 19px; height: 19px; fill: currentColor; display: block; }
+
+  .hero { padding: 4rem 0 3rem; border-bottom: 1px solid var(--border); }
+  .hero h2 { font-size: clamp(1.5rem, 4.5vw, 2.3rem); line-height: 1.25; font-weight: 700; color: var(--text); letter-spacing: -.01em; }
+  .hero h2 em { color: var(--green); font-style: normal; }
+  .hero p.lede { color: var(--dim); margin-top: 1.1rem; max-width: 46rem; font-size: 1rem; }
+  .shipping { margin-top: 1.6rem; padding: .8rem 1rem; border: 1px solid var(--border); border-radius: 5px; background: var(--panel); font-size: .87rem; }
+  .shipping b { color: var(--amber); }
+  .cta-row { display: flex; gap: .8rem; margin-top: 2rem; flex-wrap: wrap; }
+  .cta {
+    display: inline-block; text-decoration: none; border-radius: 5px; font-weight: 700;
+    letter-spacing: .08em; padding: .7rem 1.5rem; font-size: .85rem; border: 1px solid;
+  }
+  .cta.primary { color: var(--bg); background: var(--green); border-color: var(--green); }
+  .cta.primary:hover { filter: brightness(1.12); }
+  .cta.ghost { color: var(--cyan); border-color: var(--cyan); background: transparent; }
+  .cta.ghost:hover { background: var(--cyan); color: var(--bg); }
+
+  section { padding: 3rem 0; border-bottom: 1px solid var(--border); }
+  section h3 { font-size: .78rem; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); margin-bottom: 1.4rem; }
+  section h4 { font-size: 1.05rem; color: var(--text); margin-bottom: .5rem; }
+  p + p { margin-top: .8rem; }
+  .muted { color: var(--dim); }
+
+  pre {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 5px;
+    padding: 1rem 1.1rem; overflow-x: auto; font-size: .82rem; line-height: 1.6;
+  }
+  code { color: var(--cyan); }
+  pre .c { color: var(--dim); }
+  pre .k { color: var(--violet); }
+  pre .s { color: var(--green); }
+
+  .grid { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); }
+  .card { border: 1px solid var(--border); border-radius: 5px; padding: 1rem 1.1rem; background: var(--panel); }
+  .card .name { color: var(--green); font-weight: 700; font-size: .87rem; word-break: break-all; }
+  .card .what { color: var(--dim); font-size: .84rem; margin-top: .4rem; }
+  .card .ver { float: right; color: var(--dim); font-size: .72rem; border: 1px solid var(--border); border-radius: 3px; padding: 0 .4rem; }
+
+  .ex { border: 1px solid var(--border); border-radius: 5px; padding: 1rem 1.1rem; background: var(--panel); }
+  .ex .top { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
+  .ex .nm { color: var(--cyan); font-weight: 700; font-size: .9rem; }
+  .ex .tag { font-size: .68rem; letter-spacing: .06em; padding: .05rem .45rem; border-radius: 3px; border: 1px solid; }
+  .tag.x402 { color: var(--amber); border-color: var(--amber); }
+  .tag.mpp { color: var(--cyan); border-color: var(--cyan); }
+  .tag.mcp { color: var(--violet); border-color: var(--violet); }
+  .tag.local { color: var(--dim); border-color: var(--dim); }
+  .ex p { font-size: .85rem; color: var(--dim); margin-top: .5rem; }
+  .ex a { font-size: .8rem; }
+
+  ol.flow { list-style: none; counter-reset: s; display: grid; gap: .7rem; }
+  ol.flow li { counter-increment: s; padding-left: 2.4rem; position: relative; font-size: .88rem; color: var(--dim); }
+  ol.flow li::before {
+    content: counter(s); position: absolute; left: 0; top: 0; width: 1.6rem; height: 1.6rem;
+    border: 1px solid var(--green); color: var(--green); border-radius: 50%;
+    display: grid; place-items: center; font-size: .72rem; font-weight: 700;
+  }
+  ol.flow li b { color: var(--text); font-weight: 600; }
+
+  .final { padding: 3.5rem 0; text-align: center; }
+  .final h3 { margin-bottom: 1rem; }
+  .final p { color: var(--dim); margin-bottom: 1.6rem; }
+  footer { border-top: 1px solid var(--border); padding: 1.6rem 0; color: var(--dim); font-size: .8rem; }
+  footer .wrap { display: flex; gap: 1.2rem; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>STELLARPAY</h1>
+    <nav>
+      <a href="#packages">packages</a>
+      <a href="#examples">examples</a>
+      <a href="/dashboard">live demo</a>
+      <a id="gh" href="https://github.com/yripper/stellarpay" target="_blank" rel="noopener" title="Source on GitHub" aria-label="Source on GitHub">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+      </a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="hero">
+    <h2>Turn any API route — or any MCP tool — into a <em>paid endpoint</em> on Stellar.</h2>
+    <p class="lede">
+      Agents can't sign up, can't hold a credit card, and can't wait for an invoice. stellarpay is
+      a set of npm packages that let them just pay: one config object gates a route behind
+      <b>x402</b> or <b>MPP</b>, and one client auto-pays any <code>402</code> it meets, within
+      spend limits you set.
+    </p>
+    <div class="shipping">
+      <b>What we ship is the SDK</b> — six packages on npm under <code>@stellarpay-sdk</code>.
+      The demos below exist to prove the SDK works against real testnet money; they're not the
+      product.
+    </div>
+    <div class="cta-row">
+      <a class="cta primary" href="/dashboard">▶ TRY IT YOURSELF</a>
+      <a class="cta ghost" href="https://www.npmjs.com/package/@stellarpay-sdk/core" target="_blank" rel="noopener">VIEW ON NPM</a>
+    </div>
+  </div>
+
+  <section id="packages">
+    <h3>The SDK — six packages</h3>
+    <pre><span class="c"># one seller and one buyer, both real</span>
+npm install <span class="s">@stellarpay-sdk/express</span>   <span class="c"># or /hono, /fastify</span>
+npm install <span class="s">@stellarpay-sdk/client</span></pre>
+    <div class="grid" style="margin-top:1rem">
+      <div class="card"><span class="ver">0.1.0</span><div class="name">@stellarpay-sdk/core</div><div class="what">The paywall engine: config validation, route matching, and the three payment schemes behind one <code>Request → Response</code> handler.</div></div>
+      <div class="card"><span class="ver">0.1.0</span><div class="name">@stellarpay-sdk/express</div><div class="what">One-line Express middleware. <code>app.use(stellarpayExpress(cfg))</code>.</div></div>
+      <div class="card"><span class="ver">0.1.0</span><div class="name">@stellarpay-sdk/hono</div><div class="what">One-line Hono middleware — the thinnest adapter, no conversion layer.</div></div>
+      <div class="card"><span class="ver">0.1.0</span><div class="name">@stellarpay-sdk/fastify</div><div class="what">Fastify plugin, registered at the app root before your routes.</div></div>
+      <div class="card"><span class="ver">0.1.0</span><div class="name">@stellarpay-sdk/client</div><div class="what"><code>createPayingFetch()</code> — a <code>fetch</code> that transparently pays any 402, x402 or MPP, with hard spend caps.</div></div>
+      <div class="card"><span class="ver">0.1.0</span><div class="name">@stellarpay-sdk/mcp</div><div class="what">Per-tool-call payments for MCP servers, settled in-protocol — plus a paying MCP client.</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h3>The whole integration</h3>
+    <!-- Deliberately one column: side by side, these snippets are narrower than their longest
+         import line and clip mid-identifier, which reads as broken code on a landing page. -->
+    <div class="grid" style="grid-template-columns:1fr">
+      <div>
+        <h4>Sell</h4>
+        <pre><span class="k">import</span> { stellarpay } <span class="k">from</span> <span class="s">"@stellarpay-sdk/core"</span>;
+<span class="k">import</span> { stellarpayExpress } <span class="k">from</span> <span class="s">"@stellarpay-sdk/express"</span>;
+
+<span class="k">const</span> paywall = stellarpay({
+  network: <span class="s">"stellar:testnet"</span>,
+  payTo: <span class="s">"G…"</span>,
+  routes: {
+    <span class="s">"GET /weather"</span>: { price: <span class="s">"$0.001"</span> },
+  },
+});
+
+app.use(stellarpayExpress(paywall)); <span class="c">// before routes</span></pre>
+      </div>
+      <div>
+        <h4>Buy</h4>
+        <pre><span class="k">import</span> { createPayingFetch } <span class="k">from</span> <span class="s">"@stellarpay-sdk/client"</span>;
+
+<span class="k">const</span> payFetch = createPayingFetch({
+  secret: process.env.AGENT_SECRET,
+  network: <span class="s">"stellar:testnet"</span>,
+  limits: { maxPerCall: <span class="s">"$0.01"</span>, maxTotal: <span class="s">"$1.00"</span> },
+});
+
+<span class="c">// 402 → pays → retries. Your code never sees it.</span>
+<span class="k">await</span> payFetch(<span class="s">"https://api.example/weather"</span>);</pre>
+      </div>
+    </div>
+    <p class="muted" style="margin-top:1rem;font-size:.85rem">
+      Change <code>scheme</code> on a route to settle over MPP instead of x402 — including
+      server-sponsored gas, so the buyer pays no fees. Nothing else in your app changes.
+    </p>
+  </section>
+
+  <section id="examples">
+    <h3>Seven demos we built to prove it</h3>
+    <p class="muted" style="margin-bottom:1.4rem;font-size:.88rem">
+      Six run live on Stellar testnet right now, selling real Horizon data for real money. Press
+      the button on the dashboard and an autonomous agent goes shopping across all of them.
+    </p>
+    <div class="grid">
+      <div class="ex">
+        <div class="top"><span class="nm">express-api</span><span class="tag x402">x402</span><span class="tag mpp">mpp</span></div>
+        <p>The flagship seller: a free route, an x402 route, and an MPP route with sponsored gas — all from one config. Asset reports and account forensics.</p>
+        <a href="https://express-api-production-226e.up.railway.app" target="_blank" rel="noopener">visit ↗</a>
+      </div>
+      <div class="ex">
+        <div class="top"><span class="nm">hono-api</span><span class="tag x402">x402</span></div>
+        <p>Whale alerts, paywalled in a six-line diff. The proof that adding payments to an existing API is a config change, not a rewrite.</p>
+        <a href="https://hono-api-production-415b.up.railway.app" target="_blank" rel="noopener">visit ↗</a>
+      </div>
+      <div class="ex">
+        <div class="top"><span class="nm">fastify-api</span><span class="tag mpp">mpp</span></div>
+        <p>Live fee and congestion stats over MPP — a third framework, to show the adapter layer is genuinely thin.</p>
+        <a href="https://fastify-api-production-092a.up.railway.app" target="_blank" rel="noopener">visit ↗</a>
+      </div>
+      <div class="ex">
+        <div class="top"><span class="nm">mcp-server</span><span class="tag mcp">mcp</span></div>
+        <p>An MCP server with individually priced tools. The payment <em>is</em> the tool call — no API keys, no subscription, settled in-protocol.</p>
+        <a href="https://mcp-server-production-d3f8.up.railway.app" target="_blank" rel="noopener">visit ↗</a>
+      </div>
+      <div class="ex">
+        <div class="top"><span class="nm">agent</span></div>
+        <p>A Claude-driven buyer with a funded wallet and a hard budget. It decides what intel it needs and buys it — the only service here that consumes the SDK rather than exposing it.</p>
+        <a href="/dashboard">drive it ↗</a>
+      </div>
+      <div class="ex">
+        <div class="top"><span class="nm">dashboard</span></div>
+        <p>Mission control: a live receipt feed, a per-example runner, a chat you can talk to the agent through, and an on-chain verify link on every row.</p>
+        <a href="/dashboard">open ↗</a>
+      </div>
+      <div class="ex" style="border-color:var(--violet)">
+        <div class="top"><span class="nm" style="color:var(--violet)">private-api</span><span class="tag local">local only</span></div>
+        <p>Getting paid <em>without learning who paid you</em>. Payment arrives from a shielded pool, so the seller can prove it was paid and still can't identify its customer. One shielded transfer opens a credit line; requests then cost 0.4s and nothing on-chain.</p>
+        <a href="https://github.com/yripper/stellarpay/tree/main/examples/private-api" target="_blank" rel="noopener">read the writeup ↗</a>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h3>What actually happens on the wire</h3>
+    <ol class="flow">
+      <li>An agent requests a paid route. It gets a <b>402</b> with a machine-readable challenge — price, asset, recipient, network.</li>
+      <li>The client checks the price against its <b>spend limits</b> and refuses if it's over budget. This happens <em>before</em> anything is signed.</li>
+      <li>It signs and settles on <b>Stellar</b> — via the facilitator for x402, or directly for MPP, with gas optionally sponsored by the seller.</li>
+      <li>It <b>retries automatically</b> with proof of payment. Your calling code just sees a 200.</li>
+      <li>The seller's <code>onPayment</code> hook fires with a receipt carrying the real <b>transaction hash</b> — verifiable on any block explorer.</li>
+    </ol>
+  </section>
+
+  <div class="final">
+    <h3>See it settle real money</h3>
+    <p>An autonomous agent, a live feed, and a transaction hash you can check yourself.</p>
+    <a class="cta primary" href="/dashboard">▶ TRY IT YOURSELF</a>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>stellarpay · Stellar testnet</span>
+    <a href="/dashboard">live demo</a>
+    <a href="https://github.com/yripper/stellarpay" target="_blank" rel="noopener">github</a>
+    <a href="https://www.npmjs.com/package/@stellarpay-sdk/core" target="_blank" rel="noopener">npm</a>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,167 @@
+- generic [active] [ref=f3e1]:
+  - banner [ref=f3e2]:
+    - generic [ref=f3e3]:
+      - heading "STELLARPAY" [level=1] [ref=f3e4]
+      - navigation [ref=f3e5]:
+        - link "packages" [ref=f3e6] [cursor=pointer]:
+          - /url: "#packages"
+        - link "examples" [ref=f3e7] [cursor=pointer]:
+          - /url: "#examples"
+        - link "live demo" [ref=f3e8] [cursor=pointer]:
+          - /url: /dashboard
+        - link "Source on GitHub" [ref=f3e9] [cursor=pointer]:
+          - /url: https://github.com/yripper/stellarpay
+  - generic [ref=f3e12]:
+    - generic [ref=f3e13]:
+      - heading [level=2] [ref=f3e14]:
+        - text: Turn any API route — or any MCP tool — into a
+        - emphasis [ref=f3e15]: paid endpoint
+        - text: on Stellar.
+      - paragraph [ref=f3e16]:
+        - text: "Agents can't sign up, can't hold a credit card, and can't wait for an invoice. stellarpay is a set of npm packages that let them just pay: one config object gates a route behind x402 or MPP, and one client auto-pays any"
+        - code [ref=f3e17]: "402"
+        - text: it meets, within spend limits you set.
+      - generic [ref=f3e18]:
+        - text: What we ship is the SDK — six packages on npm under
+        - code [ref=f3e19]: "@stellarpay-sdk"
+        - text: . The demos below exist to prove the SDK works against real testnet money; they're not the product.
+      - generic [ref=f3e20]:
+        - link "▶ TRY IT YOURSELF" [ref=f3e21] [cursor=pointer]:
+          - /url: /dashboard
+        - link "VIEW ON NPM" [ref=f3e22] [cursor=pointer]:
+          - /url: https://www.npmjs.com/package/@stellarpay-sdk/core
+    - generic [ref=f3e23]:
+      - heading "The SDK — six packages" [level=3] [ref=f3e24]
+      - generic [ref=f3e25]: "# one seller and one buyer, both real npm install @stellarpay-sdk/express # or /hono, /fastify npm install @stellarpay-sdk/client"
+      - generic [ref=f3e26]:
+        - generic [ref=f3e27]:
+          - generic [ref=f3e28]: 0.1.0
+          - generic [ref=f3e29]: "@stellarpay-sdk/core"
+          - generic [ref=f3e30]:
+            - text: "The paywall engine: config validation, route matching, and the three payment schemes behind one"
+            - code [ref=f3e31]: Request → Response
+            - text: handler.
+        - generic [ref=f3e32]:
+          - generic [ref=f3e33]: 0.1.0
+          - generic [ref=f3e34]: "@stellarpay-sdk/express"
+          - generic [ref=f3e35]:
+            - text: One-line Express middleware.
+            - code [ref=f3e36]: app.use(stellarpayExpress(cfg))
+            - text: .
+        - generic [ref=f3e37]:
+          - generic [ref=f3e38]: 0.1.0
+          - generic [ref=f3e39]: "@stellarpay-sdk/hono"
+          - generic [ref=f3e40]: One-line Hono middleware — the thinnest adapter, no conversion layer.
+        - generic [ref=f3e41]:
+          - generic [ref=f3e42]: 0.1.0
+          - generic [ref=f3e43]: "@stellarpay-sdk/fastify"
+          - generic [ref=f3e44]: Fastify plugin, registered at the app root before your routes.
+        - generic [ref=f3e45]:
+          - generic [ref=f3e46]: 0.1.0
+          - generic [ref=f3e47]: "@stellarpay-sdk/client"
+          - generic [ref=f3e48]:
+            - code [ref=f3e49]: createPayingFetch()
+            - text: — a
+            - code [ref=f3e50]: fetch
+            - text: that transparently pays any 402, x402 or MPP, with hard spend caps.
+        - generic [ref=f3e51]:
+          - generic [ref=f3e52]: 0.1.0
+          - generic [ref=f3e53]: "@stellarpay-sdk/mcp"
+          - generic [ref=f3e54]: Per-tool-call payments for MCP servers, settled in-protocol — plus a paying MCP client.
+    - generic [ref=f3e55]:
+      - heading "The whole integration" [level=3] [ref=f3e56]
+      - generic [ref=f3e57]:
+        - generic [ref=f3e58]:
+          - heading "Sell" [level=4] [ref=f3e59]
+          - generic [ref=f3e60]: "import { stellarpay } from \"@stellarpay-sdk/core\"; import { stellarpayExpress } from \"@stellarpay-sdk/express\"; const paywall = stellarpay({ network: \"stellar:testnet\", payTo: \"G…\", routes: { \"GET /weather\": { price: \"$0.001\" }, }, }); app.use(stellarpayExpress(paywall)); // before routes"
+        - generic [ref=f3e61]:
+          - heading "Buy" [level=4] [ref=f3e62]
+          - generic [ref=f3e63]: "import { createPayingFetch } from \"@stellarpay-sdk/client\"; const payFetch = createPayingFetch({ secret: process.env.AGENT_SECRET, network: \"stellar:testnet\", limits: { maxPerCall: \"$0.01\", maxTotal: \"$1.00\" }, }); // 402 → pays → retries. Your code never sees it. await payFetch(\"https://api.example/weather\");"
+      - paragraph [ref=f3e64]:
+        - text: Change
+        - code [ref=f3e65]: scheme
+        - text: on a route to settle over MPP instead of x402 — including server-sponsored gas, so the buyer pays no fees. Nothing else in your app changes.
+    - generic [ref=f3e66]:
+      - heading "Seven demos we built to prove it" [level=3] [ref=f3e67]
+      - paragraph [ref=f3e68]: Six run live on Stellar testnet right now, selling real Horizon data for real money. Press the button on the dashboard and an autonomous agent goes shopping across all of them.
+      - generic [ref=f3e69]:
+        - generic [ref=f3e70]:
+          - generic [ref=f3e71]:
+            - generic [ref=f3e72]: express-api
+            - generic [ref=f3e73]: x402
+            - generic [ref=f3e74]: mpp
+          - paragraph [ref=f3e75]: "The flagship seller: a free route, an x402 route, and an MPP route with sponsored gas — all from one config. Asset reports and account forensics."
+          - link "visit ↗" [ref=f3e76] [cursor=pointer]:
+            - /url: https://express-api-production-226e.up.railway.app
+        - generic [ref=f3e77]:
+          - generic [ref=f3e78]:
+            - generic [ref=f3e79]: hono-api
+            - generic [ref=f3e80]: x402
+          - paragraph [ref=f3e81]: Whale alerts, paywalled in a six-line diff. The proof that adding payments to an existing API is a config change, not a rewrite.
+          - link "visit ↗" [ref=f3e82] [cursor=pointer]:
+            - /url: https://hono-api-production-415b.up.railway.app
+        - generic [ref=f3e83]:
+          - generic [ref=f3e84]:
+            - generic [ref=f3e85]: fastify-api
+            - generic [ref=f3e86]: mpp
+          - paragraph [ref=f3e87]: Live fee and congestion stats over MPP — a third framework, to show the adapter layer is genuinely thin.
+          - link "visit ↗" [ref=f3e88] [cursor=pointer]:
+            - /url: https://fastify-api-production-092a.up.railway.app
+        - generic [ref=f3e89]:
+          - generic [ref=f3e90]:
+            - generic [ref=f3e91]: mcp-server
+            - generic [ref=f3e92]: mcp
+          - paragraph [ref=f3e93]:
+            - text: An MCP server with individually priced tools. The payment
+            - emphasis [ref=f3e94]: is
+            - text: the tool call — no API keys, no subscription, settled in-protocol.
+          - link "visit ↗" [ref=f3e95] [cursor=pointer]:
+            - /url: https://mcp-server-production-d3f8.up.railway.app
+        - generic [ref=f3e96]:
+          - generic [ref=f3e97]: agent
+          - paragraph [ref=f3e99]: A Claude-driven buyer with a funded wallet and a hard budget. It decides what intel it needs and buys it — the only service here that consumes the SDK rather than exposing it.
+          - link "drive it ↗" [ref=f3e100] [cursor=pointer]:
+            - /url: /dashboard
+        - generic [ref=f3e101]:
+          - generic [ref=f3e102]: dashboard
+          - paragraph [ref=f3e104]: "Mission control: a live receipt feed, a per-example runner, a chat you can talk to the agent through, and an on-chain verify link on every row."
+          - link "open ↗" [ref=f3e105] [cursor=pointer]:
+            - /url: /dashboard
+        - generic [ref=f3e106]:
+          - generic [ref=f3e107]:
+            - generic [ref=f3e108]: private-api
+            - generic [ref=f3e109]: local only
+          - paragraph [ref=f3e110]:
+            - text: Getting paid
+            - emphasis [ref=f3e111]: without learning who paid you
+            - text: . Payment arrives from a shielded pool, so the seller can prove it was paid and still can't identify its customer. One shielded transfer opens a credit line; requests then cost 0.4s and nothing on-chain.
+          - link "read the writeup ↗" [ref=f3e112] [cursor=pointer]:
+            - /url: https://github.com/yripper/stellarpay/tree/main/examples/private-api
+    - generic [ref=f3e113]:
+      - heading "What actually happens on the wire" [level=3] [ref=f3e114]
+      - list [ref=f3e115]:
+        - listitem [ref=f3e116]: An agent requests a paid route. It gets a 402 with a machine-readable challenge — price, asset, recipient, network.
+        - listitem [ref=f3e117]:
+          - text: The client checks the price against its spend limits and refuses if it's over budget. This happens
+          - emphasis [ref=f3e118]: before
+          - text: anything is signed.
+        - listitem [ref=f3e119]: It signs and settles on Stellar — via the facilitator for x402, or directly for MPP, with gas optionally sponsored by the seller.
+        - listitem [ref=f3e120]: It retries automatically with proof of payment. Your calling code just sees a 200.
+        - listitem [ref=f3e121]:
+          - text: The seller's
+          - code [ref=f3e122]: onPayment
+          - text: hook fires with a receipt carrying the real transaction hash — verifiable on any block explorer.
+    - generic [ref=f3e123]:
+      - heading "See it settle real money" [level=3] [ref=f3e124]
+      - paragraph [ref=f3e125]: An autonomous agent, a live feed, and a transaction hash you can check yourself.
+      - link "▶ TRY IT YOURSELF" [ref=f3e126] [cursor=pointer]:
+        - /url: /dashboard
+  - contentinfo [ref=f3e127]:
+    - generic [ref=f3e128]:
+      - generic [ref=f3e129]: stellarpay · Stellar testnet
+      - link "live demo" [ref=f3e130] [cursor=pointer]:
+        - /url: /dashboard
+      - link "github" [ref=f3e131] [cursor=pointer]:
+        - /url: https://github.com/yripper/stellarpay
+      - link "npm" [ref=f3e132] [cursor=pointer]:
+        - /url: https://www.npmjs.com/package/@stellarpay-sdk/core

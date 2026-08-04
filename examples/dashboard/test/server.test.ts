@@ -158,6 +158,21 @@ describe("dashboard app", () => {
     expect(await post("not-a-service")).toBe(JSON.stringify({ scope: "all" }));
   });
 
+  // `/` is the landing (what we ship); `/dashboard` is mission control.
+  it("serves the landing at / and the dashboard at /dashboard", async () => {
+    const app = makeApp({ landingHtml: "<h1>landing</h1>" });
+    expect(await (await app.request("/")).text()).toBe("<h1>landing</h1>");
+    expect(await (await app.request("/dashboard")).text()).toBe("<h1>test</h1>");
+  });
+
+  // Before the landing existed, `/` WAS the dashboard — a deploy without the landing file must
+  // still land visitors on something, not 404.
+  it("redirects / to /dashboard when no landing page is configured", async () => {
+    const res = await makeApp().request("/");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/dashboard");
+  });
+
   it("chat rejects an empty message before spending anything", async () => {
     const agentFetch = vi.fn();
     const app = makeApp({ agentUrl: "http://agent.test", agentFetch: agentFetch as unknown as typeof fetch });

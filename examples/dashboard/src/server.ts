@@ -27,7 +27,14 @@ export type Deps = {
    */
   chatCooldown?: Cooldown;
   agentFetch?: typeof fetch;
+  /** Mission control, served at /dashboard. */
   html: string;
+  /**
+   * Marketing landing page, served at `/`. Optional so tests (and any embedder that only wants
+   * the feed) can omit it — when unset, `/` redirects to /dashboard rather than 404ing, since
+   * the dashboard was the root page before the landing existed.
+   */
+  landingHtml?: string;
   /**
    * Seller's public key (G...), for the "verify on-chain" affordance: every payment in the
    * feed settles into this account. Unset → GET /config omits it and the dashboard hides the
@@ -54,7 +61,9 @@ export function buildApp(deps: Deps): Hono {
   const authorized = (c: Context): boolean => c.req.header("authorization") === `Bearer ${deps.ingestSecret}`;
 
   app.get("/healthz", (c) => c.json({ ok: true }));
-  app.get("/", (c) => c.html(deps.html));
+  // `/` is the pitch (what we ship: the SDK); `/dashboard` is the live demo that proves it.
+  app.get("/", (c) => (deps.landingHtml ? c.html(deps.landingHtml) : c.redirect("/dashboard", 302)));
+  app.get("/dashboard", (c) => c.html(deps.html));
 
   // Public keys only — safe to expose unauthenticated. The static page (public/index.html)
   // fetches this on load to learn whether to show the "verify on-chain" link and the live

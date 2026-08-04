@@ -1,0 +1,30 @@
+- generic [active] [ref=f4e1]:
+  - banner [ref=f4e2]:
+    - heading "STELLARPAY // MISSION CONTROL" [level=1] [ref=f4e3]
+    - generic [ref=f4e4]: live payment feed · stellar testnet
+    - link "Source on GitHub" [ref=f4e5] [cursor=pointer]:
+      - /url: https://github.com/yripper/stellarpay
+    - generic [ref=f4e8]:
+      - generic [ref=f4e9]:
+        - generic [ref=f4e10]: "0"
+        - generic [ref=f4e11]: payments
+      - generic [ref=f4e12]:
+        - generic [ref=f4e13]: "0.0000"
+        - generic [ref=f4e14]: USDC volume
+  - tablist "Which services the agent may buy from" [ref=f4e15]:
+    - generic [ref=f4e16]: target
+    - tab "ALL SERVICES" [selected] [ref=f4e17] [cursor=pointer]
+    - tab "express-api" [ref=f4e18] [cursor=pointer]
+    - tab "hono-api" [ref=f4e19] [cursor=pointer]
+    - tab "fastify-api" [ref=f4e20] [cursor=pointer]
+    - tab "mcp-server" [ref=f4e21] [cursor=pointer]
+  - generic [ref=f4e22]:
+    - button "▶ UNLEASH THE AGENT" [ref=f4e23] [cursor=pointer]
+    - generic [ref=f4e24]: An autonomous agent will buy intel across this economy, within its spend limits.
+  - generic [ref=f4e25]:
+    - generic [ref=f4e26]:
+      - textbox "Ask the agent" [ref=f4e27]:
+        - /placeholder: Ask the agent for something it can buy…
+      - button "ASK" [ref=f4e28] [cursor=pointer]
+    - generic [ref=f4e29]: The agent answers by actually buying — every question it takes on spends real testnet USDC, within the same limits.
+  - generic [ref=f4e30]: Waiting for payments…
