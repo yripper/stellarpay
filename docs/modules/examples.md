@@ -65,16 +65,18 @@ route settles over **mpp-charge**, so across the three paid services both paymen
 - `examples/hono-api/src/reportReceipt.ts` — byte-for-byte copy of
   `examples/express-api/src/reportReceipt.ts`; see that entry above.
 - `examples/hono-api/src/whales.ts` — `Whale` type + `extractWhales()` (pure) and
-  `fetchWhales()` (network, injected `fetch`). Filters live Horizon `/payments` records down
-  to large native-XLM transfers.
+  `fetchWhales()` (network, injected `fetch`). Sorts live Horizon `/payments` native-XLM
+  records by amount descending and returns the top 10 in the scanned window — no size floor
+  (a fixed threshold was tried and dropped; see the Gotchas entry below).
 - `examples/hono-api/src/server.ts` — `buildApp(env): Hono`, the pure app factory that builds
   the `StellarpayConfig`, mounts `stellarpayHono` before the routes, and registers the free
   index/health routes plus the one paywalled whale-alerts route.
 - `examples/hono-api/src/main.ts` — entrypoint: `readEnv()`, `buildApp(env)`, then
   `@hono/node-server`'s `serve({ fetch: app.fetch, port: env.port })`.
-- `examples/hono-api/test/whales.test.ts` — unit tests for `extractWhales`: threshold/sort/cap
-  behavior and survival of malformed records. `fetchWhales` (the network half) has no
-  automated test — see the Testing section below.
+- `examples/hono-api/test/whales.test.ts` — unit tests for `extractWhales`: descending
+  sort/cap behavior, an empty window, a window with fewer native payments than the limit,
+  and survival of malformed records. `fetchWhales` (the network half) has no automated
+  test — see the Testing section below.
 - `examples/fastify-api/src/env.ts` — `Env` type + `readEnv()`, copied per-service from
   `examples/express-api/src/env.ts` with `required` = `["DEMO_PAYTO", "DEMO_MPP_SECRET"]`
   (`env.ts:19`, this service's one route is mpp-charge and needs the HMAC secret) and the port
@@ -143,12 +145,12 @@ other non-OK Horizon response (`intel.ts:15-20`).
 - `GET /` — free. JSON service index: name, the one route with its price/scheme/description,
   and a `diff` marketing line pointing at the README (`server.ts:21-27`).
 - `GET /healthz` — free. `200 { ok: true }` (`server.ts:28`).
-- `GET /alerts/whales` — **$0.01, x402**. The 10 largest native-XLM payments among the most
-  recent 200 payment operations on testnet, at/above a 10,000 XLM threshold
-  (`whales.ts:29-37`). Paywall key: `"GET /alerts/whales"` — an exact key, not a wildcard,
-  since the route has no path parameters (`server.ts:15`). A Horizon failure maps to `502
-  {"error":"horizon_unavailable"}` (`whales.ts:32`); an empty result set is a normal `200`
-  with `count: 0`, not an error.
+- `GET /alerts/whales` — **$0.01, x402**. The top 10 largest native-XLM payments among the
+  most recent 200 payment operations on testnet — no size floor (`whales.ts:14-29`). Paywall
+  key: `"GET /alerts/whales"` — an exact key, not a wildcard, since the route has no path
+  parameters (`server.ts:15`). A Horizon failure maps to `502 {"error":"horizon_unavailable"}`
+  (`whales.ts:44`); a thin or empty window is a normal `200` with `count` below 10 (or `0`)
+  and `largestXlm: null` when there are no native payments at all — never an error.
 
 `examples/fastify-api`'s HTTP surface (`examples/fastify-api/src/server.ts:21-29`):
 
@@ -185,11 +187,11 @@ TS surface consumed by later tasks:
   Record<string, unknown> }`, returned by all three fetchers.
 - `Whale` (`examples/hono-api/src/whales.ts:2`) — `{ amountXlm: string; from: string; to:
   string; asset: "XLM"; at: string; tx: string; link: string }`.
-- `extractWhales(records: unknown[], minXlm: number, limit: number): Whale[]`
-  (`examples/hono-api/src/whales.ts:9`) — pure filter, no network; used directly by
-  `test/whales.test.ts`.
+- `extractWhales(records: unknown[], limit: number): Whale[]`
+  (`examples/hono-api/src/whales.ts:14`) — pure sort/cap, no network, no size floor; used
+  directly by `test/whales.test.ts`.
 - `fetchWhales(f?: typeof fetch): Promise<{ status: number; body: Record<string, unknown> }>`
-  (`examples/hono-api/src/whales.ts:30`) — the network half; `f` defaults to global `fetch`.
+  (`examples/hono-api/src/whales.ts:42`) — the network half; `f` defaults to global `fetch`.
 - `buildApp(env: Env): Hono` (`examples/hono-api/src/server.ts:8`) — `Env` = `{ payTo: string;
   facilitatorKey?: string; dashboardUrl?: string; ingestSecret?: string; port: number }`
   (`examples/hono-api/src/env.ts:9-15`).
@@ -264,20 +266,27 @@ TS surface consumed by later tasks:
   as `undefined` in the config (`server.ts:22-23,31`). `onPayment` forwards every receipt to
   the reporter (`server.ts:34`). `app.use(stellarpayExpress(config))` is called **before**
   any route registration (`server.ts:38`).
-- `extractWhales(records, minXlm, limit)` (`examples/hono-api/src/whales.ts:9-25`) — for each
-  raw record, keeps it only if `type === "payment"` and `asset_type === "native"`
-  (`whales.ts:13`) and every one of `amount`/`from`/`to`/`created_at`/`transaction_hash` is
-  present and a string (`whales.ts:14-19`), then only if `Number(amount)` is finite and
-  `>= minXlm` (`whales.ts:20-21`). Survivors sort by `amount` descending and are capped to
-  `limit` (`whales.ts:24`). Malformed input (non-objects, `null`, missing fields) is filtered
-  out rather than thrown on — `asRec`/`str` narrow everything defensively (`whales.ts:5-6`).
-- `fetchWhales(f)` (`examples/hono-api/src/whales.ts:30-37`) — calls live
-  `GET https://horizon-testnet.stellar.org/payments?order=desc&limit=200`. A non-OK response
-  becomes `502 {"error":"horizon_unavailable"}` (`whales.ts:32`); otherwise the response's
-  `_embedded.records` are run through `extractWhales` with a hardcoded `minXlm: 10_000` and
-  `limit: 10` (`whales.ts:35`) and wrapped in `{ thresholdXlm, count, whales, source:
-  "horizon-testnet, live" }` (`whales.ts:36`). Neither threshold nor limit nor the record
-  window (200) is configurable via `Env` — changing them is a code change, not a config knob.
+- `extractWhales(records, limit)` (`examples/hono-api/src/whales.ts:14-29`) — for each raw
+  record, keeps it only if `type === "payment"` and `asset_type === "native"`
+  (`whales.ts:18`) and every one of `amount`/`from`/`to`/`created_at`/`transaction_hash` is
+  present and a string (`whales.ts:19-24`), then only if `Number(amount)` is finite
+  (`whales.ts:25`) — **no lower-bound check**. Survivors sort by `amount` descending and are
+  capped to `limit` (`whales.ts:28`). Malformed input (non-objects, `null`, missing fields)
+  is filtered out rather than thrown on — `asRec`/`str` narrow everything defensively
+  (`whales.ts:5-6`). This function originally took a third `minXlm` argument and dropped
+  anything below it; that filter was removed as a product decision after the review found
+  live testnet payment volume (~2 XLM typical) meant the fixed 10,000 XLM floor made the
+  paid route return an empty list almost always — see the Gotchas entry below.
+- `fetchWhales(f)` (`examples/hono-api/src/whales.ts:42-58`) — calls live
+  `GET https://horizon-testnet.stellar.org/payments?order=desc&limit=200` (`whales.ts:43`).
+  A non-OK response becomes `502 {"error":"horizon_unavailable"}` (`whales.ts:44`); otherwise
+  the response's `_embedded.records` are run through `extractWhales` with a hardcoded
+  `limit: 10` (`whales.ts:47`) and wrapped in `{ window, count, largestXlm, whales, source:
+  "horizon-testnet, live" }` (`whales.ts:48-57`). `count` is always `whales.length`;
+  `largestXlm` reads `whales[0]?.amountXlm ?? null` (`whales.ts:53`) — `null` only when the
+  window contains zero native payments, never fabricated. Neither the limit (10) nor the
+  scan window (200) is configurable via `Env` — changing them is a code change, not a config
+  knob.
 - `buildApp(env)` (`examples/hono-api/src/server.ts:8-34`) — builds the reporter
   (`server.ts:9`), then a `StellarpayConfig` with `facilitatorApiKey` spread in conditionally
   off `env.facilitatorKey` (`server.ts:14`, same unset-optional-var pattern as express-api).
@@ -461,16 +470,28 @@ TS surface consumed by later tasks:
   `https://horizon-testnet.stellar.org/payments?order=desc&limit=200`: native payment records
   carry `type: "payment"`, `asset_type: "native"`, `amount` (decimal string, e.g.
   `"2.0000000"`), `from`, `to`, `created_at`, and `transaction_hash` — every field
-  `extractWhales` reads (`whales.ts:13-19`) is present and correctly named. No adaptation was
+  `extractWhales` reads (`whales.ts:19-24`) is present and correctly named. No adaptation was
   needed here; do not assume this generalizes to other Horizon endpoints (see the `/assets`
   gotcha above).
-- **A live `count: 0` response is normal, not a bug.** Of the 200 most recent payment
-  operations sampled 2026-08-04, only 25 were native payments and the largest was ~80 XLM —
-  far under the 10,000 XLM threshold. `GET /alerts/whales` legitimately answers `200
-  {"thresholdXlm":10000,"count":0,"whales":[],"source":"horizon-testnet, live"}` whenever no
-  single payment in the current 200-op window clears the bar. Don't "fix" this by lowering the
-  threshold to make demos look busier — it's real data, and the brief fixed the threshold at
-  10,000.
+- **There is no fixed XLM threshold — this was a deliberate reversal of the original
+  design, made after judge-facing review.** The brief originally specified `extractWhales(records,
+  minXlm, limit)` with `minXlm: 10_000`, on the (reasonable-sounding) assumption that "whale
+  alerts" implies a size floor. Live testnet data disproved that: of the 200 most recent
+  payment operations sampled 2026-08-04, only 25 were native payments and the largest was
+  ~2–80 XLM depending on the sample — so a 10,000 XLM floor made `GET /alerts/whales`
+  answer `count: 0` on almost every call, which is an honest response but a dead demo when
+  a judge is watching an agent pay $0.01 for it on camera. The repo owner's ruling
+  (post-review) replaced the floor with "always return the top 10 largest native payments
+  in the window, whatever their size, and say so explicitly" — see `extractWhales`'s and
+  `fetchWhales`'s Key Methods entries above for the new `{ window, count, largestXlm,
+  whales, source }` envelope. **Do not reintroduce a size floor** without revisiting this
+  decision; it was made once already and reverted for a documented reason.
+- **`count` and `largestXlm` are truthful by construction, not just by convention.** `count`
+  is always `whales.length` — never a hardcoded 10 — so a thin window (fewer than 10 native
+  payments) is visible in the response, not padded or hidden. `largestXlm` is computed from
+  the actual top result (`whales[0]?.amountXlm ?? null`, `whales.ts:53`) and is `null`, not
+  `"0"` or omitted, on the one edge case where the window has zero native payments — a
+  caller can tell "no data" apart from "the largest was zero" without guessing.
 - **Hono catches async-handler rejections; Express 4 does not.** Verified both by reading
   `hono-base.js`'s `#dispatch()` (`node_modules/.pnpm/hono@4.12.33/node_modules/hono/dist/
   hono-base.js`) — the single-handler and composed-middleware paths both `.catch((err) =>
@@ -483,9 +504,10 @@ TS surface consumed by later tasks:
   a clean `500` from Hono's own default error handler, and the server keeps serving other
   requests. This is a deliberate difference from the Express example, not an oversight: adding
   an adapter here would be redundant machinery.
-- **Threshold (10,000 XLM), cap (10), and scan window (200 most recent payment ops) are all
-  hardcoded inside `fetchWhales`** (`whales.ts:35`), not `Env` fields. A later task wanting a
-  different threshold changes the source, not `.env`.
+- **Cap (10) and scan window (200 most recent payment ops) are hardcoded inside
+  `fetchWhales`** (`whales.ts:33-34,47`), not `Env` fields. There is no threshold anymore
+  (see above) — a later task wanting a different cap or window size changes the source, not
+  `.env`.
 - **`extractWhales` is exported and unit-tested directly; `fetchWhales` is not.** The network
   half is exercised only by the manual live-verification procedure below — there is no
   `test/` coverage for the `502` mapping or the `_embedded.records` unwrap.
@@ -571,11 +593,14 @@ TS surface consumed by later tasks:
   `createPayingFetch({ secret, network: "stellar:testnet", rpcUrl })` from
   `@stellarpay/client` (the pattern in `scripts/smoke.ts:283-293`) and read the dashboard's
   `/events` stream to confirm both receipts arrived.
-- `examples/hono-api/test/whales.test.ts` — `extractWhales` via two cases: mixed records
-  (below-threshold, above-threshold, `create_account`, a non-native asset) filtered, sorted
-  descending, and capped to `limit`; and survival of malformed input (`null`, a number, `{}`,
-  a `payment`-typed record missing every other field) → `[]`. No test file covers `fetchWhales`
-  or `buildApp()` — out of the brief's file list (`test/whales.test.ts` only).
+- `examples/hono-api/test/whales.test.ts` — `extractWhales` via four cases: mixed native
+  and non-native/wrong-type records sorted descending and capped to `limit` (no size floor,
+  so a below-what-was-once-a-threshold `"50"` record still competes on sort order alone); an
+  empty input array → `[]`; a window with fewer native payments than the limit → an
+  array shorter than `limit`, `length` matching the actual native-payment count; and
+  survival of malformed input (`null`, a number, `{}`, a `payment`-typed record missing every
+  other field) → `[]`. No test file covers `fetchWhales` or `buildApp()` — out of the brief's
+  file list (`test/whales.test.ts` only).
 - Run: `pnpm --filter @stellarpay-examples/hono-api test`. Same root-suite caveat as above:
   `pnpm test` from repo root does not include `examples/*`.
 - Live verification of `examples/hono-api` is not covered by any automated test — same
@@ -634,13 +659,18 @@ TS surface consumed by later tasks:
   `payment-required` header; mpp-charge → `WWW-Authenticate: Payment … intent="charge"`,
   both quoting `200000` base units = `$0.02` USDC), and both settled to `200` through
   `createPayingFetch`, with both receipts arriving on the dashboard's `/events` feed.
-- `examples/hono-api` verified live end-to-end 2026-08-04 on Stellar testnet: `GET /` and `GET
-  /healthz` returned the expected JSON, `GET /alerts/whales` bare issued a genuine `402` with
-  a `PAYMENT-REQUIRED` challenge header quoting `100000` base units = `$0.01` USDC, and the
-  route settled to `200 {"thresholdXlm":10000,"count":0,"whales":[],"source":"horizon-testnet,
-  live"}` through `createPayingFetch` (a live, correctly-shaped answer — `count: 0` because no
-  single native payment in the sampled window cleared 10,000 XLM, not a bug), with the receipt
-  arriving on the dashboard's `/events` feed carrying the real payer and `txHash`.
+- `examples/hono-api` verified live end-to-end 2026-08-04 on Stellar testnet, **twice**: once
+  against the original fixed-threshold design (`GET /` and `GET /healthz` returned the
+  expected JSON, `GET /alerts/whales` bare issued a genuine `402` with a `PAYMENT-REQUIRED`
+  challenge header quoting `100000` base units = `$0.01` USDC, and the route settled to a
+  correctly-shaped but empty `200 {"thresholdXlm":10000,"count":0,"whales":[]}` — real data,
+  but a dead-looking demo, which is exactly what prompted the threshold's removal); and again
+  after dropping the threshold, same day: the same `402` behavior held, and the paid route
+  settled to `200 {"window":"200 most recent payment ops","count":10,"largestXlm":
+  "2.0000000","whales":[ …10 real records… ],"source":"horizon-testnet, live"}` — a populated,
+  non-empty result with real `from`/`to`/`tx` values, confirming the fix actually produces a
+  demo-ready response. The receipt arrived on the dashboard's `/events` feed both times,
+  carrying the real payer and `txHash`.
 - Hono's automatic-500-on-rejection behavior confirmed both by reading
   `node_modules/.pnpm/hono@4.12.33/node_modules/hono/dist/hono-base.js`'s `#dispatch()` and by
   running a throwaway handler that `await fetch()`s an unreachable host: `app.request()`

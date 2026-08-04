@@ -33,17 +33,34 @@ Part of the [stellarpay](../../README.md) SDK's `examples/` directory. See
 | --- | --- | --- | --- |
 | `GET /` | free | — | JSON service index: the route, its price, and its scheme |
 | `GET /healthz` | free | — | `{ "ok": true }` |
-| `GET /alerts/whales` | **$0.01** | `x402` | The 10 largest native-XLM payments among the most recent 200 payment operations on testnet, at/above a 10,000 XLM threshold |
+| `GET /alerts/whales` | **$0.01** | `x402` | The top 10 largest native-XLM payments among the most recent 200 payment operations on testnet — no size floor |
 
 The paywall's route table uses the exact key `"GET /alerts/whales"` — stellarpay route keys
 are `"METHOD /exact/path"` or `"METHOD /prefix/*"` and have no `:param` syntax
 (`packages/core/src/config.ts:7`, `packages/core/src/router.ts:14-19`); since this route has
 no path parameters, an exact key is enough.
 
-A scan that finds nothing above the threshold is not an error — it's a real, live answer
-(`{ "thresholdXlm": 10000, "count": 0, "whales": [], "source": "horizon-testnet, live" }`).
-Testnet payment volume is bursty; whether any single-payment whale shows up depends entirely
-on what's moved through the network in the last 200 payment operations at request time.
+There is no fixed XLM threshold: testnet payment volume is small and bursty (single-payment
+transfers of a few XLM are typical), so a fixed floor would make the paid route return an
+empty list almost every time a judge tried it. Instead the response always returns the top
+10 largest native payments it found in the 200-op window, however large or small those
+actually were, and says so explicitly:
+
+```json
+{
+  "window": "200 most recent payment ops",
+  "count": 10,
+  "largestXlm": "2.0000000",
+  "whales": [
+    { "amountXlm": "2.0000000", "from": "G…", "to": "G…", "asset": "XLM", "at": "2026-08-04T…", "tx": "…", "link": "https://stellar.expert/explorer/testnet/tx/…" }
+  ],
+  "source": "horizon-testnet, live"
+}
+```
+
+`count` always matches the number of records actually returned (fewer than 10 when the
+window has fewer than 10 native payments); `largestXlm` is `null` on the one edge case
+where the window has no native payments at all — never fabricated to look busier.
 
 ## Try it
 
@@ -82,7 +99,7 @@ const payingFetch = createPayingFetch({
 });
 
 const alerts = await payingFetch("http://localhost:4602/alerts/whales");
-console.log(alerts.status, await alerts.json());   // 200, with live whale data
+console.log(alerts.status, await alerts.json());   // 200, with the top 10 live payments in the window
 ```
 
 The buyer account needs testnet XLM for fees and a funded testnet USDC trustline — see
@@ -113,5 +130,6 @@ pnpm --filter @stellarpay-examples/hono-api test
 pnpm --filter @stellarpay-examples/hono-api typecheck
 ```
 
-`test/whales.test.ts` drives the pure `extractWhales` filter directly: threshold/sort/cap
-behavior and survival of malformed records — no network involved.
+`test/whales.test.ts` drives the pure `extractWhales` sort/cap directly: descending order,
+capping to the limit, an empty window, a window with fewer native payments than the limit,
+and survival of malformed records — no network involved.
