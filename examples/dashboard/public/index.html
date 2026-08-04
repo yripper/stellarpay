@@ -247,6 +247,7 @@
     "hono-api": "hono-api",
     "fastify-api": "fastify-api",
     "mcp-server": "mcp-server",
+    "shielded": "shielded ◆",
   };
   const SCOPE_BLURBS = {
     "all": "An autonomous agent will buy intel across this economy, within its spend limits.",
@@ -254,6 +255,7 @@
     "hono-api": "Scoped to hono-api — whale alerts, paywalled in a six-line diff.",
     "fastify-api": "Scoped to fastify-api — live fee and congestion stats over MPP.",
     "mcp-server": "Scoped to mcp-server — individually priced MCP tools, paid in-protocol.",
+    "shielded": "Payment from a shielded pool — the seller proves it was paid without learning who paid.",
   };
   let currentScope = "all";
 
@@ -278,9 +280,16 @@
       el.setAttribute("aria-selected", String(el.dataset.scope === scope));
     });
     msg.textContent = SCOPE_BLURBS[scope] || ("Scoped to " + scope + ".");
-    chatInput.placeholder = scope === "all"
-      ? "Ask the agent for something it can buy…"
-      : "Ask the agent — it may only buy from " + scope + "…";
+    // The shielded target is not the Claude agent — it runs one fixed payment cycle, so there
+    // is nothing to converse with. Disable the box instead of letting the ask 400.
+    const chattable = scope !== "shielded";
+    chatInput.disabled = !chattable;
+    chatSend.disabled = !chattable;
+    chatInput.placeholder = !chattable
+      ? "The shielded demo runs one fixed cycle — press UNLEASH to watch it"
+      : scope === "all"
+        ? "Ask the agent for something it can buy…"
+        : "Ask the agent — it may only buy from " + scope + "…";
   }
 
   const btn = document.getElementById("unleash");

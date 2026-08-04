@@ -22,6 +22,7 @@ const port = Number(process.env["PORT"] ?? 4600);
 const app = buildApp({
   ingestSecret,
   agentUrl: process.env["AGENT_URL"] || undefined,
+  privateApiUrl: process.env["PRIVATE_API_URL"] || undefined,
   html,
   landingHtml,
   payTo: process.env["DEMO_PAYTO"] || undefined,

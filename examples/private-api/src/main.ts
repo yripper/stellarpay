@@ -4,6 +4,7 @@ import { createLineStore } from "./line.js";
 import { createSppCli } from "./spp.js";
 import { buildSeller } from "./server.js";
 import { startWatcher } from "./watcher.js";
+import { runShieldedDemo } from "./demo.js";
 
 const env = readEnv();
 
@@ -13,7 +14,35 @@ const cli = createSppCli({
   deployment: env.deployment,
   circuitsDir: env.circuitsDir,
   pool: env.pool,
+  ...(env.dataDir ? { dataDir: env.dataDir } : {}),
 });
+
+/**
+ * The buyer identity used by `/demo/run`. A distinct shielded identity that happens to share
+ * this process — the seller still cannot attribute the payment to it.
+ */
+const buyerCli = createSppCli({
+  bin: env.sppBin,
+  account: env.buyerAccount,
+  deployment: env.deployment,
+  circuitsDir: env.circuitsDir,
+  pool: env.pool,
+  ...(env.dataDir ? { dataDir: env.dataDir } : {}),
+});
+
+/** Narrates a demo run onto the dashboard's live feed, exactly like the agent does. */
+function narrate(message: string): void {
+  console.log(message);
+  if (!env.dashboardUrl || !env.ingestSecret) return;
+  void fetch(`${env.dashboardUrl}/ingest`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${env.ingestSecret}` },
+    body: JSON.stringify({ service: "private-api", kind: "agent-log", message }),
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => {
+    // Narration is best-effort: an unreachable dashboard must never fail a payment run.
+  });
+}
 
 const store = createLineStore({
   basePriceXlm: env.basePriceXlm,
@@ -52,13 +81,30 @@ startWatcher({
   pollMs: 4000,
 });
 
+const refund = (amountXlm: string, to: { notePublicKey: string; encryptionPublicKey: string }): Promise<void> =>
+  cli.transfer({ amountXlm, notePublicKey: to.notePublicKey, encryptionPublicKey: to.encryptionPublicKey });
+
 const app = buildSeller({
   store,
   tokens,
   payTo: { notePublicKey: keys.notePublicKey, encryptionPublicKey: keys.encryptionPublicKey, pool: env.pool },
-  refund: (amountXlm, to) => cli.transfer({ amountXlm, notePublicKey: to.notePublicKey, encryptionPublicKey: to.encryptionPublicKey }),
+  refund,
   intel,
   creditsPerLine: env.creditsPerLine,
+  runDemo: () =>
+    runShieldedDemo({
+      store,
+      tokens,
+      buyer: buyerCli,
+      seller: { notePublicKey: keys.notePublicKey, encryptionPublicKey: keys.encryptionPublicKey },
+      buyerKeys: async () => {
+        const k = await buyerCli.keys();
+        return { notePublicKey: k.notePublicKey, encryptionPublicKey: k.encryptionPublicKey };
+      },
+      intel,
+      refund,
+      narrate,
+    }),
 });
 
 serve({ fetch: app.fetch, port: env.port }, (info) => {

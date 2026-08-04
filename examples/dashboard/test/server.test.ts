@@ -173,6 +173,47 @@ describe("dashboard app", () => {
     expect(res.headers.get("location")).toBe("/dashboard");
   });
 
+  // The shielded scope is a different service with its own identities, not the Claude agent.
+  it("unleash routes the shielded scope to private-api, not the agent", async () => {
+    const agentFetch = vi.fn().mockResolvedValue(new Response(null, { status: 202 }));
+    const app = makeApp({
+      agentUrl: "http://agent.test",
+      privateApiUrl: "http://private.test",
+      cooldown: createCooldown(120_000, () => 0),
+      agentFetch: agentFetch as unknown as typeof fetch,
+    });
+    const res = await app.request("/unleash", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ scope: "shielded" }),
+    });
+    expect(res.status).toBe(202);
+    expect(agentFetch).toHaveBeenCalledWith("http://private.test/demo/run", expect.anything());
+  });
+
+  it("unleash 503s the shielded scope when private-api is not configured, even with an agent present", async () => {
+    const app = makeApp({ agentUrl: "http://agent.test", cooldown: createCooldown(120_000, () => 0) });
+    const res = await app.request("/unleash", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ scope: "shielded" }),
+    });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "private_api_not_configured" });
+  });
+
+  it("chat refuses the shielded scope rather than asking a service with no Claude loop", async () => {
+    const agentFetch = vi.fn();
+    const app = makeApp({ agentUrl: "http://agent.test", agentFetch: agentFetch as unknown as typeof fetch });
+    const res = await app.request("/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "hi", scope: "shielded" }),
+    });
+    expect(res.status).toBe(400);
+    expect(agentFetch).not.toHaveBeenCalled();
+  });
+
   it("chat rejects an empty message before spending anything", async () => {
     const agentFetch = vi.fn();
     const app = makeApp({ agentUrl: "http://agent.test", agentFetch: agentFetch as unknown as typeof fetch });

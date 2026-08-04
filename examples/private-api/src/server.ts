@@ -16,6 +16,11 @@ export type SellerDeps = {
   /** The intel this API actually sells. */
   intel: () => Promise<unknown>;
   creditsPerLine: number;
+  /**
+   * Runs the whole lifecycle for a watching visitor (see `demo.ts`). Absent → `/demo/run` 503s,
+   * which is what happens when this service has no buyer identity configured.
+   */
+  runDemo?: () => Promise<{ paid: string; requests: number; refunded: string }>;
 };
 
 /**
@@ -25,6 +30,7 @@ export type SellerDeps = {
  */
 export function buildSeller(deps: SellerDeps): Hono {
   const app = new Hono();
+  let demoRunning = false;
 
   app.get("/healthz", (c) => c.json({ ok: true }));
 
@@ -114,6 +120,24 @@ export function buildSeller(deps: SellerDeps): Hono {
       // The line is already closed; report honestly rather than pretending it settled.
       return c.json({ refunded: "0", owed: closed.refundXlm, error: err instanceof Error ? err.message : String(err) }, 502);
     }
+  });
+
+  /**
+   * Drives one full shielded lifecycle. Awaited but fire-and-forget from the dashboard's point
+   * of view — it answers 202 and the visitor watches the feed, because a full cycle is two
+   * on-chain settlements and takes ~40s. One at a time: the `spp` CLI has a single wallet DB.
+   */
+  app.post("/demo/run", (c) => {
+    if (!deps.runDemo) return c.json({ error: "demo_not_configured" }, 503);
+    if (demoRunning) return c.json({ error: "run_in_progress" }, 409);
+    demoRunning = true;
+    void deps
+      .runDemo()
+      .catch(() => undefined)
+      .finally(() => {
+        demoRunning = false;
+      });
+    return c.json({ status: "started" }, 202);
   });
 
   return app;

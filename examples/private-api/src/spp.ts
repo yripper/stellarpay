@@ -28,6 +28,8 @@ export type SppConfig = {
   circuitsDir: string;
   /** Pool contract id (C…) this seller is paid in. */
   pool: string;
+  /** Wallet/indexer data directory. Unset → the CLI's per-user default. */
+  dataDir?: string;
   /** Hard cap per CLI call; proving plus submission measured ~16s, so this is generous. */
   timeoutMs?: number;
 };
@@ -49,10 +51,21 @@ export function createSppCli(config: SppConfig) {
     return next;
   }
 
+  /** Flags every invocation carries: identity, deployment, circuits, and (optionally) data dir. */
+  const common = (): string[] => [
+    "--account",
+    config.account,
+    "--deployment",
+    config.deployment,
+    "--circuits-dir",
+    config.circuitsDir,
+    ...(config.dataDir ? ["--data-dir", config.dataDir] : []),
+  ];
+
   async function json<T>(args: string[]): Promise<T> {
     const { stdout } = await run(
       config.bin,
-      [...args, "--account", config.account, "--deployment", config.deployment, "--circuits-dir", config.circuitsDir, "--json"],
+      [...args, ...common(), "--json"],
       { timeout, maxBuffer: 8 * 1024 * 1024 },
     );
     return JSON.parse(stdout) as T;
@@ -95,20 +108,7 @@ export function createSppCli(config: SppConfig) {
         await run(
           config.bin,
           [
-            "transfer",
-            config.pool,
-            opts.amountXlm,
-            "--note-key",
-            opts.notePublicKey,
-            "--encryption-key",
-            opts.encryptionPublicKey,
-            "--account",
-            config.account,
-            "--deployment",
-            config.deployment,
-            "--circuits-dir",
-            config.circuitsDir,
-          ],
+            "transfer", config.pool, opts.amountXlm, "--note-key", opts.notePublicKey, "--encryption-key", opts.encryptionPublicKey, ...common()],
           { timeout, maxBuffer: 8 * 1024 * 1024 },
         );
       });

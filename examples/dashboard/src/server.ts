@@ -9,7 +9,14 @@ import { parseIngestBody } from "./ingest.js";
  * duplicated rather than imported because the dashboard deliberately has no dependency on the
  * agent package — an unknown scope is simply forwarded and defaulted by the agent.
  */
-export const SCOPES = ["all", "express-api", "hono-api", "fastify-api", "mcp-server"] as const;
+export const SCOPES = ["all", "express-api", "hono-api", "fastify-api", "mcp-server", "shielded"] as const;
+
+/**
+ * The one scope that is NOT the agent. `shielded` drives `examples/private-api`, a separate
+ * service with its own shielded identities — so /unleash routes it to `privateApiUrl` instead of
+ * `agentUrl`, and /chat refuses it (that service has no Claude loop, it runs one fixed cycle).
+ */
+export const SHIELDED_SCOPE = "shielded";
 
 /** Source repository, surfaced in the header. Matches the `repository` field in every manifest. */
 export const REPO_URL = "https://github.com/yripper/stellarpay";
@@ -18,6 +25,8 @@ export type Deps = {
   ingestSecret: string;
   /** Public base URL of the agent service; unset → /unleash answers 503. */
   agentUrl?: string;
+  /** Public base URL of examples/private-api; unset → the `shielded` scope answers 503. */
+  privateApiUrl?: string;
   /** Injectable for tests; defaults to a 2-minute global cooldown (spec §4.5). */
   cooldown?: Cooldown;
   /**
@@ -118,18 +127,22 @@ export function buildApp(deps: Deps): Hono {
   );
 
   app.post("/unleash", async (c) => {
-    if (!deps.agentUrl) return c.json({ error: "agent_not_configured" }, 503);
+    const scope = await scopeOf(c);
+    const shielded = scope === SHIELDED_SCOPE;
+    // The shielded scope is a different service entirely — private-api runs one fixed payment
+    // cycle with its own shielded identities, rather than the Claude-driven agent.
+    const target = shielded ? deps.privateApiUrl : deps.agentUrl;
+    if (!target) return c.json({ error: shielded ? "private_api_not_configured" : "agent_not_configured" }, 503);
     const gate = cooldown.check();
     if (!gate.ok) return c.json({ error: "cooldown", retryAfterSeconds: gate.retryAfterSeconds }, 429);
     cooldown.trigger();
-    const scope = await scopeOf(c);
-    void agentFetch(`${deps.agentUrl}/run`, {
+    void agentFetch(shielded ? `${target}/demo/run` : `${target}/run`, {
       method: "POST",
       headers: { authorization: `Bearer ${deps.ingestSecret}`, "content-type": "application/json" },
       body: JSON.stringify({ scope }),
       signal: AbortSignal.timeout(5000),
     }).catch(() => {
-      // Fire-and-forget: an unreachable agent must not break the button; the judge
+      // Fire-and-forget: an unreachable service must not break the button; the judge
       // sees 202 + an empty run, and the failure lands in this service's logs only.
     });
     return c.json({ status: "unleashed", scope }, 202);
@@ -146,6 +159,9 @@ export function buildApp(deps: Deps): Hono {
     const fields = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
     const message = typeof fields["message"] === "string" ? fields["message"].trim() : "";
     if (!message) return c.json({ error: "empty_message" }, 400);
+    // private-api has no Claude loop — it runs one fixed cycle. Say so rather than forwarding a
+    // question to a service that cannot answer it.
+    if (scopeFrom(fields) === SHIELDED_SCOPE) return c.json({ error: "chat_unavailable_for_scope" }, 400);
     const gate = chatCooldown.check();
     if (!gate.ok) return c.json({ error: "cooldown", retryAfterSeconds: gate.retryAfterSeconds }, 429);
     chatCooldown.trigger();

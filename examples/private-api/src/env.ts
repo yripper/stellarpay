@@ -18,6 +18,9 @@ export type Env = {
   creditsPerLine: number;
   port: number;
   sellerUrl: string;
+  dataDir: string | undefined;
+  dashboardUrl: string | undefined;
+  ingestSecret: string | undefined;
 };
 
 const REQUIRED = ["SPP_BIN", "SPP_SELLER_ACCOUNT", "SPP_DEPLOYMENT", "SPP_CIRCUITS_DIR", "SPP_POOL"] as const;
@@ -44,5 +47,8 @@ export function readEnv(): Env {
     creditsPerLine: Number(process.env["LINE_CREDITS"] ?? 5),
     port,
     sellerUrl: process.env["SELLER_URL"] ?? `http://127.0.0.1:${port}`,
+    dataDir: process.env["SPP_DATA_DIR"] || undefined,
+    dashboardUrl: process.env["DASHBOARD_URL"] || undefined,
+    ingestSecret: process.env["INGEST_SECRET"] || undefined,
   };
 }
