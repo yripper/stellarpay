@@ -1040,6 +1040,22 @@ TS surface consumed by later tasks:
   client disconnect would); `/unleash` 503 with no agent configured, 202 + agent `fetch`
   called with the right URL/headers on first call, 429 with the exact `retryAfterSeconds` on
   a call within the cooldown window, and 202 even when the agent `fetch` rejects.
+- `examples/dashboard/test/integration.sse.test.ts` — the demo-owned pipeline (reporter →
+  `/ingest` auth → buffer → `/events`) proven over a **real HTTP socket**, not `app.request()`:
+  `beforeAll` binds `buildApp()` via `@hono/node-server`'s `serve({ fetch: app.fetch, port: 0
+  })` on an ephemeral port (`server.ts:18`, `serve` signature verified against
+  `node_modules/.pnpm/@hono+node-server@2.0.12_hono@4.12.33/node_modules/@hono/node-server/dist/index.d.mts:78`,
+  same pattern as `scripts/smoke.ts:229`) and reads the real port back off the listen
+  callback's `info.port`, so the test never hardcodes a port. It drives a real
+  `createReceiptReporter` (`examples/express-api/src/reportReceipt.ts:9`, imported across the
+  example boundary on purpose — this test *is* the seam between the two demo-owned pieces) at
+  that URL and reads the response back over `fetch`/`ReadableStream`, not a mock: a
+  correctly-authorized receipt is asserted present (service/kind/receipt.amount/`at`) on a
+  freshly opened `/events` connection's replayed buffer, and a receipt reported with the wrong
+  bearer secret is asserted **absent** from that same replay. `afterAll` calls `server.close()`
+  and every SSE read is paired with `reader.cancel()`, so the suite exits with no open handles.
+  Confirmed to fail loudly (a 3s timeout on the first case, a wrong-content assertion on the
+  second) when the `/ingest` bearer check is inverted, then reverted — see task-10-report.md.
 - `examples/express-api/test/reportReceipt.test.ts` — the reporter's wire format (URL,
   `Bearer` header, `{service, ...event}` body) against an injected `fetch`; the
   unset-dashboard no-op; and that a rejecting `fetch` neither throws synchronously nor
