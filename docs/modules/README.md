@@ -9,3 +9,4 @@
 | `packages/fastify` | [fastify.md](./fastify.md) |
 | `packages/client` | [client.md](./client.md) |
 | `packages/mcp` | [mcp.md](./mcp.md) |
+| `examples/*` | [examples.md](./examples.md) |
