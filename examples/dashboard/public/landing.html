@@ -66,7 +66,7 @@
   .tag.x402 { color: var(--amber); border-color: var(--amber); }
   .tag.mpp { color: var(--cyan); border-color: var(--cyan); }
   .tag.mcp { color: var(--violet); border-color: var(--violet); }
-  .tag.local { color: var(--dim); border-color: var(--dim); }
+  .tag.shielded { color: var(--violet); border-color: var(--violet); }
   .ex p { font-size: .85rem; color: var(--dim); margin-top: .5rem; }
   .ex a { font-size: .8rem; }
 
@@ -179,8 +179,8 @@ app.use(stellarpayExpress(paywall)); <span class="c">// before routes</span></pr
   <section id="examples">
     <h3>Seven demos we built to prove it</h3>
     <p class="muted" style="margin-bottom:1.4rem;font-size:.88rem">
-      Six run live on Stellar testnet right now, selling real Horizon data for real money. Press
-      the button on the dashboard and an autonomous agent goes shopping across all of them.
+      All seven run live on Stellar testnet right now, selling real Horizon data for real money.
+      Press the button on the dashboard and an autonomous agent goes shopping across them.
     </p>
     <div class="grid">
       <div class="ex">
@@ -213,9 +213,11 @@ app.use(stellarpayExpress(paywall)); <span class="c">// before routes</span></pr
         <p>Mission control: a live receipt feed, a per-example runner, a chat you can talk to the agent through, and an on-chain verify link on every row.</p>
         <a href="/dashboard">open ↗</a>
       </div>
-      <div class="ex" style="border-color:var(--violet)">
-        <div class="top"><span class="nm" style="color:var(--violet)">private-api</span><span class="tag local">local only</span></div>
-        <p>Getting paid <em>without learning who paid you</em>. Payment arrives from a shielded pool, so the seller can prove it was paid and still can't identify its customer. One shielded transfer opens a credit line; requests then cost 0.4s and nothing on-chain.</p>
+      <div class="ex" style="border-color:var(--violet);box-shadow:0 0 14px rgba(179,136,255,.18)">
+        <div class="top"><span class="nm" style="color:var(--violet)">private-api</span><span class="tag shielded">shielded ◆</span></div>
+        <p>Getting paid <em>without learning who paid you</em>. Payment arrives from a shielded pool, so the seller can prove it was paid and still can't identify its customer. One shielded transfer opens a credit line; requests then cost 0.4s and nothing on-chain. Pick the <b>shielded ◆</b> target on the dashboard and watch a full cycle settle.</p>
+        <a href="/dashboard">run it live ↗</a>
+        &nbsp;·&nbsp;
         <a href="https://github.com/yripper/stellarpay/tree/main/examples/private-api" target="_blank" rel="noopener">read the writeup ↗</a>
       </div>
     </div>

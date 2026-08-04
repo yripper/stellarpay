@@ -8,6 +8,7 @@
   :root {
     --bg: #0a0e14; --panel: #11161f; --border: #1d2633; --text: #c9d4e3;
     --dim: #5c6b80; --green: #3ddc84; --cyan: #4dd0e1; --amber: #ffb74d; --red: #ef5350;
+    --violet: #b388ff;
   }
   * { box-sizing: border-box; margin: 0; }
   body { background: var(--bg); color: var(--text); font: 14px/1.5 "SF Mono", ui-monospace, Menlo, monospace; min-height: 100vh; }
@@ -60,6 +61,12 @@
   }
   .tab:hover { color: var(--text); border-color: var(--dim); }
   .tab[aria-selected="true"] { color: var(--cyan); border-color: var(--cyan); }
+  /* The shielded demo is the showpiece — it gets its own color so visitors spot it. */
+  .tab[data-scope="shielded"] { color: var(--violet); border-color: var(--violet); }
+  .tab[data-scope="shielded"][aria-selected="true"] {
+    color: var(--violet); border-color: var(--violet);
+    box-shadow: 0 0 10px rgba(179, 136, 255, 0.35);
+  }
   #chat { padding: 0 1.5rem 1rem; border-bottom: 1px solid var(--border); }
   #chat-log { display: flex; flex-direction: column; gap: .5rem; margin: .6rem 0; }
   #chat-log:empty { display: none; }
@@ -255,7 +262,7 @@
     "hono-api": "Scoped to hono-api — whale alerts, paywalled in a six-line diff.",
     "fastify-api": "Scoped to fastify-api — live fee and congestion stats over MPP.",
     "mcp-server": "Scoped to mcp-server — individually priced MCP tools, paid in-protocol.",
-    "shielded": "Payment from a shielded pool — the seller proves it was paid without learning who paid.",
+    "shielded": "◆ The showpiece: payment arrives from a shielded pool, so the seller proves it was paid without ever learning who paid. One cycle = open line → shielded transfer → paid requests → close.",
   };
   let currentScope = "all";
 
@@ -315,7 +322,12 @@
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ scope: currentScope }),
       });
-      if (res.status === 202) { msg.textContent = "Agent unleashed on " + currentScope + " — watch the feed."; startCountdown(120); }
+      if (res.status === 202) {
+        msg.textContent = currentScope === "shielded"
+          ? "Shielded cycle started — two on-chain settlements plus proving, give it ~a minute."
+          : "Agent unleashed on " + currentScope + " — watch the feed.";
+        startCountdown(120);
+      }
       else if (res.status === 429) { const body = await res.json(); msg.textContent = "Agent is cooling down."; startCountdown(body.retryAfterSeconds || 60); }
       else { msg.textContent = "Agent unavailable right now."; btn.disabled = false; }
     } catch { msg.textContent = "Request failed — try again."; btn.disabled = false; }
