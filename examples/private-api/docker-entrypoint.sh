@@ -21,7 +21,10 @@ mkdir -p "${SPP_DATA_DIR:-/data/spp}"
 # never appears in argv (readable via /proc) or in any log line.
 import_key() {
   alias="$1"
-  secret="$2"
+  # Strip surrounding whitespace: a secret piped into `railway variable set --stdin` keeps the
+  # producing command's trailing newline, and an embedded newline makes the TOML below
+  # syntactically valid but semantically junk — which surfaces only as "the strkey is invalid".
+  secret=$(printf '%s' "$2" | tr -d '[:space:]')
   identity_dir="$HOME/.config/stellar/identity"
   if stellar keys address "$alias" >/dev/null 2>&1; then
     echo "identity $alias already present"
@@ -29,11 +32,16 @@ import_key() {
   fi
   mkdir -p "$identity_dir"
   ( umask 077; printf 'secret_key = "%s"\n' "$secret" > "$identity_dir/$alias.toml" )
-  stellar keys address "$alias" >/dev/null 2>&1 || {
-    echo "identity $alias did not resolve — is its secret a valid S... key?" >&2
+  if ! address=$(stellar keys address "$alias" 2>&1); then
+    # Diagnostics only — never the value. A bad secret and a HOME/config-dir mismatch produce
+    # the same symptom, and these three facts separate them without leaking anything.
+    echo "identity $alias did not resolve" >&2
+    echo "  secret length: ${#secret} (expected 56), first char: $(printf '%.1s' "$secret")" >&2
+    echo "  identity dir:  $identity_dir (HOME=$HOME)" >&2
+    echo "  cli said:      $address" >&2
     exit 1
-  }
-  echo "identity $alias imported"
+  fi
+  echo "identity $alias imported ($(printf '%.6s' "$address")…)"
 }
 
 import_key "$SELLER_ALIAS" "$SPP_SELLER_SECRET"

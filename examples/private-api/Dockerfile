@@ -53,7 +53,10 @@ COPY --from=spp-builder /spp-src/vendor/stellar-private-payments/target/release/
 COPY --from=spp-builder /circuits /opt/spp/circuits
 RUN chmod +x /usr/local/bin/spp /app/examples/private-api/docker-entrypoint.sh
 
-ENV SPP_BIN=/usr/local/bin/spp \
+# Explicit HOME: the entrypoint writes the Stellar CLI identity under $HOME/.config, and the
+# CLI must resolve the same path when it reads it back.
+ENV HOME=/root \
+    SPP_BIN=/usr/local/bin/spp \
     SPP_CIRCUITS_DIR=/opt/spp/circuits \
     SPP_DEPLOYMENT=/opt/spp/deployments.json \
     SPP_DATA_DIR=/data/spp
