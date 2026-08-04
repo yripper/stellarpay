@@ -120,7 +120,9 @@ publishable packages that need it don't depend on an unpublishable package at ru
 | `@stellarpay/mcp` | not yet published | Per-tool-call payments for MCP servers (`toolPayments`) + a paying MCP client wrapper | [packages/mcp](./packages/mcp/README.md) |
 | `@stellarpay/shared` | private, unpublished | Internal, dead-until-Plan-B: OZ Channels submission (`submitViaChannels`); re-exports network presets/price helpers from `@stellarpay/core` for backward compatibility | [packages/shared](./packages/shared/README.md) |
 
-Publishing is in progress under the `@stellarpay` npm scope — see [PUBLISHING.md](./PUBLISHING.md).
+Not yet published to npm (confirmed 2026-08-04: `curl https://registry.npmjs.org/@stellarpay/core`
+→ `{"error":"Not found"}`) — see [PUBLISHING.md](./PUBLISHING.md) for the exact steps to
+publish all six under the `@stellarpay` npm scope.
 
 ## Quickstart
 
@@ -241,9 +243,21 @@ Full testing strategy (unit, integration, smoke) is documented in the design spe
 
 ## Links
 
-- express-api (flagship: x402 + mpp-charge + free route): <!-- filled by Plan B -->
-- hono-api ("gated in minutes" proof): <!-- filled by Plan B -->
-- fastify-api (minimal third-framework demo): <!-- filled by Plan B -->
-- mcp-server ("Stellar Intel" paid MCP server): <!-- filled by Plan B -->
-- dashboard (live receipts feed): <!-- filled by Plan B -->
-- agent (Claude-API-driven buyer): <!-- filled by Plan B -->
+- express-api (flagship: x402 + mpp-charge + free route): <https://express-api-production-226e.up.railway.app>
+- hono-api ("gated in minutes" proof): <https://hono-api-production-415b.up.railway.app>
+- fastify-api (minimal third-framework demo): <https://fastify-api-production-092a.up.railway.app>
+- mcp-server ("Stellar Intel" paid MCP server): <https://mcp-server-production-d3f8.up.railway.app>
+- dashboard (live receipts feed): <https://dashboard-production-5c18.up.railway.app>
+- agent (Claude-API-driven buyer): <https://agent-production-d3ab.up.railway.app>
+
+## Try it in 10 seconds
+
+```bash
+curl -i https://express-api-production-226e.up.railway.app/report/USDC/GD47GCJEFID5BZUWJHSKQR22LEIQJI55FFK3S6V4DSINUET76GRXTSEP
+```
+
+That's a real, unpaid request against the live flagship route — it comes back `402` with a
+`payment-required` header carrying the raw x402 challenge (base64 JSON: `x402Version`,
+`resource`, `accepts: [{ scheme: "exact", network: "stellar:testnet", amount, asset, payTo,
+... }]`). Then watch it get paid for, live, on the dashboard:
+<https://dashboard-production-5c18.up.railway.app> — press ▶ UNLEASH THE AGENT.

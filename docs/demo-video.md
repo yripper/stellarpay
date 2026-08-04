@@ -5,22 +5,17 @@ record against the **live Railway deployment** (never localhost), early enough t
 Suggested tool: QuickTime/OBS screen capture at 1080p; narrate over each shot. Total runtime
 target: 3:00 (shot timings below sum to exactly that).
 
-**Live URL placeholders.** This doc doesn't know the Railway domains yet (they're created in
-a later task). Every URL below uses a token in the form `<service-domain>` —
-`<dashboard-domain>`, `<express-domain>`, `<hono-domain>`, `<fastify-domain>`,
-`<mcp-domain>`, `<agent-domain>` — matching the six services in the table below. **To fill
-them in: grep this file for `-domain>` and replace each token with its real Railway URL**
-(same placeholder style already used for `README.md:244-249`'s `<!-- filled by Plan B -->`
-list and for the `<hono-domain>`/`<dashboard-domain>` tokens in the Task 14 plan text).
+**Live URLs.** Filled in 2026-08-04 with the real Railway domains, each verified with a live
+`/healthz` curl before being written here (see `README.md`'s Links section, same six URLs).
 
-| service | port (local) | sells |
-|---|---|---|
-| dashboard | 4600 | mission-control UI: live SSE receipt feed + UNLEASH button |
-| express-api | 4601 | `GET /report/:code/:issuer` $0.02 (x402); `GET /deep-dive/:account` $0.02 (mpp-charge) |
-| hono-api | 4602 | `GET /alerts/whales` $0.01 (x402) |
-| fastify-api | 4603 | `GET /stats/fees` $0.005 (mpp-charge) |
-| mcp-server | 4604 | MCP tools: `network_status` free, `account_summary` $0.01, `asset_stats` $0.01, `whale_watch` $0.02 |
-| agent | 4605 | buys across all of the above, Claude-driven with a scripted fallback |
+| service | port (local) | live URL | sells |
+|---|---|---|---|
+| dashboard | 4600 | `dashboard-production-5c18.up.railway.app` | mission-control UI: live SSE receipt feed + UNLEASH button |
+| express-api | 4601 | `express-api-production-226e.up.railway.app` | `GET /report/:code/:issuer` $0.02 (x402); `GET /deep-dive/:account` $0.02 (mpp-charge) |
+| hono-api | 4602 | `hono-api-production-415b.up.railway.app` | `GET /alerts/whales` $0.01 (x402) |
+| fastify-api | 4603 | `fastify-api-production-092a.up.railway.app` | `GET /stats/fees` $0.005 (mpp-charge) |
+| mcp-server | 4604 | `mcp-server-production-d3f8.up.railway.app` | MCP tools: `network_status` free, `account_summary` $0.01, `asset_stats` $0.01, `whale_watch` $0.02 |
+| agent | 4605 | `agent-production-d3ab.up.railway.app` | buys from four of the above (express-api, hono-api, fastify-api, mcp-server — never the dashboard), Claude-driven with a scripted fallback |
 
 ## Shot 1 — The pitch (0:00–0:20)
 
@@ -50,7 +45,7 @@ enough — six lines of config, one import" is an honest fallback line.
 Screen: terminal. Run:
 
 ```bash
-curl -i https://<hono-domain>/alerts/whales | head -20
+curl -i https://hono-api-production-415b.up.railway.app/alerts/whales | head -20
 ```
 
 Say: "Unpaid requests get a standard 402 with a machine-readable challenge — that's the x402
@@ -65,7 +60,7 @@ status line and the `PAYMENT-REQUIRED` header without the terminal filling up.
 
 ## Shot 4 — Mission control + UNLEASH (1:10–2:15) — the centerpiece
 
-Screen: the live dashboard at `https://<dashboard-domain>`. Press **▶ UNLEASH THE AGENT**.
+Screen: the live dashboard at `https://dashboard-production-5c18.up.railway.app`. Press **▶ UNLEASH THE AGENT**.
 Let narration + receipts stream in.
 
 Say: "This button hands a funded wallet to a Claude-driven agent with a hard spend limit on
@@ -76,14 +71,14 @@ Every row is a real settlement."
 
 Point out, as they stream in on the feed:
 - The very first agent-log line of the run: **"Budget this run: $0.05 per paid HTTP call,
-  $0.25 total (testnet USDC)."** (`examples/agent/src/main.ts:84`) — this is the concrete,
+  $0.25 total (testnet USDC)."** (`examples/agent/src/main.ts:100`) — this is the concrete,
   on-screen backing for the "spend limit" claim above.
 - A **"Settled on-chain via x402: …"** or **"Settled on-chain via mpp: …"** agent-log line
-  (`examples/agent/src/main.ts:68`) as a purchase lands.
+  (`examples/agent/src/main.ts:84`) as a purchase lands.
 
 *Note for the operator:* under the demo's real default limits ($0.05/call, $0.25/run) a full
 tour costs $0.085 total with a $0.02 per-item ceiling — well under both caps — so a live
-**refusal** ("Spend limit refused a payment…", `main.ts:70`) will almost never actually fire
+**refusal** ("Spend limit refused a payment…", `main.ts:86`) will almost never actually fire
 during a normal run. Don't promise a judge they'll see one; the "Budget this run: …" line is
 the reliable, always-present proof that the guardrail exists and is being enforced.
 
@@ -106,35 +101,35 @@ to click on those. Pick an amber `x402` row.
 
 ## Shot 6 — Close (2:40–3:00)
 
-Screen: `README.md`'s **Packages** table (`README.md:111-123`) and **Links** section
-(`README.md:242-249`).
+Screen: `README.md`'s **Packages** table (`README.md:111-125`) and **Links** section
+(`README.md:244-251`).
 
-Say: "Six packages, published on npm under @stellarpay: core, Express, Hono, Fastify, an
-auto-paying client, and paid MCP tools — the missing monetization layer for the agent
+Say: "Six packages, ready to publish on npm under @stellarpay: core, Express, Hono, Fastify,
+an auto-paying client, and paid MCP tools — the missing monetization layer for the agent
 economy, on Stellar."
 
 *Note for the operator:* the repo ships **seven** packages total, but `@stellarpay/shared`
 is deliberately private and never published (`README.md:215-221`, `PUBLISHING.md`) — only
-`core`, `express`, `hono`, `fastify`, `client`, and `mcp` go to npm, so "six packages,
-published" is the accurate count. **As of this doc being written, none of the six are on
-npm yet** (`npm view @stellarpay/core` / `https://registry.npmjs.org/@stellarpay/core`
-returns "Not found") — publishing is a manual step the repo owner runs personally per
-`PUBLISHING.md`, not something any task automates. Before recording this shot, confirm the
-packages are actually live (`npm view @stellarpay/core version`, or check
-`https://www.npmjs.com/package/@stellarpay/core`). If they aren't published yet, swap the
-line for: "Six packages, ready to publish under @stellarpay…" — don't say "published" until
+`core`, `express`, `hono`, `fastify`, `client`, and `mcp` go to npm, so "six packages" is the
+accurate count. **As of this doc being written, none of the six are on npm yet** (confirmed
+2026-08-04: `curl https://registry.npmjs.org/@stellarpay/core` → `{"error":"Not found"}`) —
+publishing is a manual step the repo owner runs personally per `PUBLISHING.md`, not something
+any task automates. Before recording this shot, re-confirm the packages are still unpublished
+(`npm view @stellarpay/core version`, or check
+`https://www.npmjs.com/package/@stellarpay/core`) — if they've since gone live, swap the
+line for: "Six packages, published on npm under @stellarpay…" — don't say "published" until
 it's true.
 
 ## Re-shoot checklist
 
 - **Health-check every live service** right before recording — all six expose `/healthz`:
   ```bash
-  curl -sw ' -> %{http_code}\n' -o /dev/null https://<dashboard-domain>/healthz
-  curl -sw ' -> %{http_code}\n' -o /dev/null https://<express-domain>/healthz
-  curl -sw ' -> %{http_code}\n' -o /dev/null https://<hono-domain>/healthz
-  curl -sw ' -> %{http_code}\n' -o /dev/null https://<fastify-domain>/healthz
-  curl -sw ' -> %{http_code}\n' -o /dev/null https://<mcp-domain>/healthz
-  curl -sw ' -> %{http_code}\n' -o /dev/null https://<agent-domain>/healthz
+  curl -sw ' -> %{http_code}\n' -o /dev/null https://dashboard-production-5c18.up.railway.app/healthz
+  curl -sw ' -> %{http_code}\n' -o /dev/null https://express-api-production-226e.up.railway.app/healthz
+  curl -sw ' -> %{http_code}\n' -o /dev/null https://hono-api-production-415b.up.railway.app/healthz
+  curl -sw ' -> %{http_code}\n' -o /dev/null https://fastify-api-production-092a.up.railway.app/healthz
+  curl -sw ' -> %{http_code}\n' -o /dev/null https://mcp-server-production-d3f8.up.railway.app/healthz
+  curl -sw ' -> %{http_code}\n' -o /dev/null https://agent-production-d3ab.up.railway.app/healthz
   ```
   Every line should print ` -> 200`.
 - Optional extra sanity check: `pnpm smoke` from the repo root (`scripts/smoke.ts`) drives one
