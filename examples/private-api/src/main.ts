@@ -14,6 +14,7 @@ const cli = createSppCli({
   deployment: env.deployment,
   circuitsDir: env.circuitsDir,
   pool: env.pool,
+  timeoutMs: env.sppTimeoutMs,
   ...(env.dataDir ? { dataDir: env.dataDir } : {}),
 });
 
@@ -27,6 +28,7 @@ const buyerCli = createSppCli({
   deployment: env.deployment,
   circuitsDir: env.circuitsDir,
   pool: env.pool,
+  timeoutMs: env.sppTimeoutMs,
   ...(env.dataDir ? { dataDir: env.dataDir } : {}),
 });
 
@@ -104,7 +106,14 @@ const app = buildSeller({
       intel,
       refund,
       narrate,
+      // Detection = the watcher's next `overview` after the note lands, and a single overview
+      // can take tens of seconds on shared cloud vCPUs. The local default (120s) is too tight.
+      fundTimeoutMs: 300_000,
     }),
+  onDemoError: (err) => {
+    // The message names the failing step (spp stderr or a demo-stage error); never a secret.
+    narrate(`Shielded demo run failed: ${err instanceof Error ? err.message : String(err)}`);
+  },
 });
 
 serve({ fetch: app.fetch, port: env.port }, (info) => {

@@ -21,6 +21,7 @@ export type Env = {
   dataDir: string | undefined;
   dashboardUrl: string | undefined;
   ingestSecret: string | undefined;
+  sppTimeoutMs: number;
 };
 
 const REQUIRED = ["SPP_BIN", "SPP_SELLER_ACCOUNT", "SPP_DEPLOYMENT", "SPP_CIRCUITS_DIR", "SPP_POOL"] as const;
@@ -50,5 +51,8 @@ export function readEnv(): Env {
     dataDir: process.env["SPP_DATA_DIR"] || undefined,
     dashboardUrl: process.env["DASHBOARD_URL"] || undefined,
     ingestSecret: process.env["INGEST_SECRET"] || undefined,
+    // Groth16 proving measured ~16s on Apple silicon but takes minutes on shared cloud vCPUs —
+    // a timeout sized to local hardware silently kills the transfer mid-proof in production.
+    sppTimeoutMs: Number(process.env["SPP_TIMEOUT_MS"] ?? 600_000),
   };
 }

@@ -21,6 +21,11 @@ export type SellerDeps = {
    * which is what happens when this service has no buyer identity configured.
    */
   runDemo?: () => Promise<{ paid: string; requests: number; refunded: string }>;
+  /**
+   * Where a failed demo run reports itself. A cycle is fire-and-forget from the visitor's point
+   * of view, so without this hook a failure is completely invisible — the feed just goes quiet.
+   */
+  onDemoError?: (err: unknown) => void;
 };
 
 /**
@@ -133,7 +138,7 @@ export function buildSeller(deps: SellerDeps): Hono {
     demoRunning = true;
     void deps
       .runDemo()
-      .catch(() => undefined)
+      .catch((err: unknown) => deps.onDemoError?.(err))
       .finally(() => {
         demoRunning = false;
       });
