@@ -62,7 +62,7 @@
   const empty = document.getElementById("empty");
   const statCount = document.getElementById("stat-count");
   const statVolume = document.getElementById("stat-volume");
-  let count = 0, volume = 0;
+  let count = 0, volume = 0, lastSeq = 0;
 
   function esc(v) {
     return String(v).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
@@ -103,7 +103,15 @@
 
   const source = new EventSource("/events");
   source.onmessage = (msg) => {
-    try { render(JSON.parse(msg.data)); } catch { /* never let one bad event kill the feed */ }
+    try {
+      const ev = JSON.parse(msg.data);
+      // /events replays the whole buffer on every (re)connect, including after the browser's
+      // own auto-reconnect on a dropped SSE connection — skip anything at or below the
+      // highest seq already rendered so a reconnect can't duplicate rows or inflate counters.
+      if (typeof ev.seq === "number" && ev.seq <= lastSeq) return;
+      if (typeof ev.seq === "number") lastSeq = ev.seq;
+      render(ev);
+    } catch { /* never let one bad event kill the feed */ }
   };
 
   const btn = document.getElementById("unleash");

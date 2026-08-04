@@ -70,7 +70,11 @@ TS surface consumed by later tasks:
 - `createFeedBuffer(capacity: number)` (`examples/dashboard/src/buffer.ts:14-28`) — returns
   `{ push(e), list() }`. `push` assigns a monotonically increasing `seq` (keeps counting
   across evictions) and evicts the oldest event once `capacity` is exceeded
-  (`buffer.ts:18-23`). `list()` returns the live array by reference as `readonly FeedEvent[]`.
+  (`buffer.ts:18-23`). `list()` returns a snapshot copy (`[...events]`), not the live array,
+  typed `readonly FeedEvent[]` (`buffer.ts:24-29`) — `/events`' replay loop (`server.ts:54`)
+  iterates it across `await` boundaries, and a concurrent `/ingest`'s capacity eviction
+  (`events.shift()` in `push`) mutating the same backing array mid-iteration would otherwise
+  skip an element or end the loop early, silently dropping events from the replay.
 - `createCooldown(intervalMs, now?)` (`examples/dashboard/src/cooldown.ts:2-16`) — returns
   `{ check(), trigger() }`. `check()` returns `{ ok: true }` until `trigger()` has been
   called and less than `intervalMs` has elapsed since, in which case it returns `{ ok:
