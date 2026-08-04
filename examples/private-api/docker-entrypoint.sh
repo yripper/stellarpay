@@ -51,7 +51,10 @@ import_key "$BUYER_ALIAS" "$SPP_BUYER_SECRET"
 # registry; re-registering costs a transaction and would fail the boot if the account were
 # short of XLM. Onboarding still derives the privacy keys, which is what we actually need.
 for alias in "$SELLER_ALIAS" "$BUYER_ALIAS"; do
-  spp onboard \
+  # Capture rather than discard: onboarding can fail for reasons that look identical from the
+  # outside (unwritable data dir, unreachable RPC, bad deployment file), and the CLI's own
+  # message is the only thing that tells them apart. It prints no secrets.
+  if ! onboard_output=$(spp onboard \
     --account "$alias" \
     --accept \
     --no-register \
@@ -59,10 +62,11 @@ for alias in "$SELLER_ALIAS" "$BUYER_ALIAS"; do
     --deployment "$SPP_DEPLOYMENT" \
     --circuits-dir "$SPP_CIRCUITS_DIR" \
     --data-dir "$SPP_DATA_DIR" \
-    >/dev/null 2>&1 </dev/null || {
-      echo "onboarding failed for $alias" >&2
-      exit 1
-    }
+    2>&1 </dev/null); then
+    echo "onboarding failed for $alias:" >&2
+    printf '%s\n' "$onboard_output" | tail -20 >&2
+    exit 1
+  fi
   echo "privacy keys derived for $alias"
 done
 
