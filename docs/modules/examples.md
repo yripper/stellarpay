@@ -1046,16 +1046,38 @@ TS surface consumed by later tasks:
   })` on an ephemeral port (`server.ts:18`, `serve` signature verified against
   `node_modules/.pnpm/@hono+node-server@2.0.12_hono@4.12.33/node_modules/@hono/node-server/dist/index.d.mts:78`,
   same pattern as `scripts/smoke.ts:229`) and reads the real port back off the listen
-  callback's `info.port`, so the test never hardcodes a port. It drives a real
-  `createReceiptReporter` (`examples/express-api/src/reportReceipt.ts:9`, imported across the
-  example boundary on purpose — this test *is* the seam between the two demo-owned pieces) at
-  that URL and reads the response back over `fetch`/`ReadableStream`, not a mock: a
-  correctly-authorized receipt is asserted present (service/kind/receipt.amount/`at`) on a
-  freshly opened `/events` connection's replayed buffer, and a receipt reported with the wrong
-  bearer secret is asserted **absent** from that same replay. `afterAll` calls `server.close()`
-  and every SSE read is paired with `reader.cancel()`, so the suite exits with no open handles.
-  Confirmed to fail loudly (a 3s timeout on the first case, a wrong-content assertion on the
-  second) when the `/ingest` bearer check is inverted, then reverted — see task-10-report.md.
+  callback's `info.port`, so the test never hardcodes a port; `baseUrl` uses `127.0.0.1`, not
+  `localhost`, sidestepping a DNS-resolution slowdown observed on this machine (a first cold
+  `fetch` to `localhost` once took ~4s, entirely a host quirk unrelated to the pipeline under
+  test). It drives a real `createReceiptReporter`
+  (`examples/express-api/src/reportReceipt.ts:9`, imported across the example boundary on
+  purpose — this test *is* the seam between the two demo-owned pieces) at that URL and reads
+  the response back over `fetch`/`ReadableStream`, not a mock. Both cases connect to `/events`
+  **before** reporting (a connection sees an event whether it lands in the initial buffer
+  replay or as a later live push — `server.ts:51-73` — so there is no "did the POST land yet"
+  race to guess at), then poll the accumulated stream with a local `collectSseUntil()` helper
+  until a predicate over the parsed `FeedEvent`s is satisfied, bounded by a 4s timeout that
+  rejects with a message naming what it was waiting for (deliberately under vitest's 5s
+  default per-test timeout, so that message — not a generic "Test timed out" — is what
+  surfaces). The positive case polls for the `express-api` event, then asserts its fields
+  (service/kind/receipt.amount/`at`). The negative case cannot pass merely by asking early:
+  since `createReceiptReporter` is fire-and-forget with nothing to await
+  (`reportReceipt.ts:15,25-28`), it reports the wrong-secret receipt and then immediately
+  reports a second, correctly-authorized **sentinel** event, and polls until *that* one
+  appears — the evil POST's auth check is a synchronous header compare with no further I/O
+  (`server.ts:25,31`), strictly cheaper than the sentinel's full body-parse/validate/buffer/
+  fan-out path, so the sentinel's arrival is proof the server has already finished with the
+  evil request too — only then does it assert the evil event is absent from everything
+  collected. `collectSseUntil()` never assumes a single `.read()` carries the whole payload
+  (it accumulates chunks across reads) and always cancels its reader in a `finally`, on every
+  path (success, predicate-timeout, or stream-closed); `afterAll` awaits `server.close()` with
+  its callback. Re-confirmed with the dashboard suite run 5 consecutive times (all pristine,
+  no open-handle or unhandled-rejection output) and, separately, by re-running just this file
+  against a deliberately inverted `/ingest` bearer check: both cases fail loudly and by name
+  (`timed out after 4000ms waiting for the express-api receipt event` /
+  `... the sentinel event confirming the pipeline flushed`) rather than hanging or passing —
+  the check was reverted immediately after (`git diff` on `src/server.ts` empty) and never
+  landed. See task-10-report.md's fix-up section for the full before/after transcript.
 - `examples/express-api/test/reportReceipt.test.ts` — the reporter's wire format (URL,
   `Bearer` header, `{service, ...event}` body) against an injected `fetch`; the
   unset-dashboard no-op; and that a rejecting `fetch` neither throws synchronously nor
