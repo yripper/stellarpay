@@ -4,6 +4,7 @@
   "description": "One-line Fastify plugin adapter for the Stellarpay payment paywall.",
   "keywords": ["stellar", "x402", "mpp", "payments", "paywall", "fastify", "plugin"],
   "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/yripper/stellarpay.git", "directory": "packages/fastify" },
   "type": "module",
   "engines": { "node": ">=22" },
   "main": "./dist/index.js",

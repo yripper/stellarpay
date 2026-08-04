@@ -4,6 +4,7 @@
   "description": "Config-driven payment paywall for Stellar — x402, MPP charge, and MPP channel behind one orchestrator.",
   "keywords": ["stellar", "x402", "mpp", "payments", "paywall", "sdk"],
   "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/yripper/stellarpay.git", "directory": "packages/core" },
   "type": "module",
   "engines": { "node": ">=22" },
   "main": "./dist/index.js",

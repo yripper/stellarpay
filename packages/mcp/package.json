@@ -4,6 +4,7 @@
   "description": "Per-tool-call payments for MCP servers via Stellar MPP, plus a paying MCP client wrapper.",
   "keywords": ["stellar", "x402", "mpp", "payments", "paywall", "mcp", "model-context-protocol"],
   "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/yripper/stellarpay.git", "directory": "packages/mcp" },
   "type": "module",
   "engines": { "node": ">=22" },
   "main": "./dist/index.js",

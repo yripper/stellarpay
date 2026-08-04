@@ -4,6 +4,7 @@
   "description": "One-line Express middleware adapter for the Stellarpay payment paywall.",
   "keywords": ["stellar", "x402", "mpp", "payments", "paywall", "express", "middleware"],
   "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/yripper/stellarpay.git", "directory": "packages/express" },
   "type": "module",
   "engines": { "node": ">=22" },
   "main": "./dist/index.js",

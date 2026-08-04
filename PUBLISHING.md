@@ -29,11 +29,8 @@ Notes:
 - Every publishable package's `package.json` has a `"prepack": "pnpm build"` script, so `npm
   pack`/`npm publish` (and `pnpm -r publish` above) always rebuild `dist/` from current source
   before packing — you never publish a stale build by forgetting a manual `pnpm build` first.
-- **No `repository` field is set** — this repo has no git remote configured yet
-  (`git remote -v` returns nothing) at the time these packages were prepared for publishing.
-  Before running step 5, add a `"repository": { "type": "git", "url": "..." }` field to each
-  publishable package's `package.json` (and ideally a `"homepage"`/`"bugs"` field too) once the
-  repo has a real remote — npm's package page links back to it, and its absence is otherwise
-  silently permitted, not an error.
+- **`repository` fields are set** — all six publishable manifests point at
+  `https://github.com/yripper/stellarpay` with per-package `directory` entries, so npm's
+  package pages link back to the monorepo.
 
 [Back to root README](./README.md)
