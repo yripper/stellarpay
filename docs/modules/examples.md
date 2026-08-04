@@ -34,6 +34,20 @@ from the dashboard, which it only narrates to) — a Claude tool-use loop
 as `agent-log` events. It is what the dashboard's UNLEASH button drives, and the one service
 that consumes the SDK rather than exposing it.
 
+`examples/private-api` is the one example that does **not** use the stellarpay SDK, and the one
+that does not deploy. It sells the same kind of Horizon-derived intel, but takes payment from a
+Stellar Private Payments shielded pool instead of x402/MPP, so the seller can prove it was paid
+without learning who paid. One shielded transfer (~15s of Groth16 proving) opens a credit line
+worth N requests, spent against an HMAC token — per-request shielded settlement would cost more
+in proving than the data is worth. Verification is one-sided: `POST /line/open` quotes an amount
+with a random tag in the sub-microXLM digits (`1.0906898`, not `1`), unique among lines awaiting
+payment, and the seller polls its **own** shielded balance for that exact figure
+(`src/watcher.ts:43-95`); the buyer transmits nothing but a line id. It runs locally only — the
+prover's circuit artifacts are ~43MB and the `spp` CLI is a native Rust binary. See
+[`examples/private-api/README.md`](../../examples/private-api/README.md) for the live-verified
+timings and the honest limitations (the fee payer is still public; the anonymity set on testnet
+is tiny; balance-delta matching is a heuristic, not a proof of a specific note).
+
 The repo-root `scripts/` directory hosts two ops companions consumed by every example service
 above, not published as a package: `scripts/smoke.ts` (a live payment round-trip test — see
 its citations throughout this doc) and `scripts/setup-demo.ts` (idempotent demo-identity
@@ -300,6 +314,25 @@ truth for both the guard and every human-readable description.
 - `GET /` — free. JSON index: name, the `POST /mcp` endpoint, and the tool→price map
   (`main.ts:14-21`).
 - `GET /healthz` — free. `200 { ok: true }` (`main.ts:22-24`).
+
+`examples/private-api`'s HTTP surface (`examples/private-api/src/server.ts:21-113`) — the
+shielded-payment seller, local-only:
+
+- `GET /healthz` — free. `200 { ok: true }`.
+- `GET /` — free. JSON index naming the pool, how to pay, and credits per line.
+- `POST /line/open` — free. Quotes a line: `{ lineId, amount, pool, notePublicKey,
+  encryptionPublicKey, credits, instructions }`. `amount` carries the uniqueness tag
+  (`line.ts:quoteAmount`), and `instructions` is a copy-pasteable `spp transfer` command.
+- `GET /line/:id` — free. `{ status, creditsLeft, amount }`, plus `token` once the seller has
+  seen the payment land. Polled by the buyer after paying; `404` on an unknown line.
+- `GET /intel` — **paid**. Headers `X-Line-Id` + `X-Line-Token`. `402` when the line is unfunded
+  or exhausted, `401` on a bad/forged token, otherwise `200 { creditsLeft, intel }` with live
+  Horizon `fee_stats`. Spends exactly one credit; nothing touches the chain.
+- `POST /line/:id/close` — closes the line and privately refunds the unspent remainder pro-rata.
+  Body must carry `{ notePublicKey, encryptionPublicKey }`: the seller cannot derive a refund
+  destination, because nothing in a shielded payment identifies its sender. The line is marked
+  unspendable **before** the refund is attempted, so a request racing the close cannot spend a
+  credit that has already been paid back (`line.ts:close`).
 
 `examples/agent`'s HTTP surface (`examples/agent/src/server.ts:29-63`) is a **trigger**, not a
 storefront — this service buys, it never sells:
