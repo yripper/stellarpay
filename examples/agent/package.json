@@ -1,0 +1,28 @@
+{
+  "name": "@stellarpay-examples/agent",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.57.0",
+    "@hono/node-server": "^2.0.12",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@stellar/stellar-sdk": "16.2.0",
+    "@stellarpay/client": "workspace:*",
+    "@stellarpay/core": "workspace:*",
+    "@stellarpay/mcp": "workspace:*",
+    "hono": "^4",
+    "tsx": "^4.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.0.0"
+  }
+}

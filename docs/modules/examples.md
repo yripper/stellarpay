@@ -22,6 +22,12 @@ route settles over **mpp-charge**, so across the three paid services both paymen
 "Stellar Intel MCP" server on `@stellarpay/mcp` whose **individual MCP tools** are priced, so
 an AI agent's `tools/call` is what triggers the on-chain micropayment. One tool
 (`network_status`) is free and three are paid, on one server, over one connection.
+`examples/agent` is the sixth and the only **buyer**: an autonomous agent with a funded
+testnet wallet that shops across all five other services on demand — a Claude tool-use loop
+(`claude-sonnet-5`) picks what a rotating mission needs, `@stellarpay/client` and
+`@stellarpay/mcp` settle each purchase on-chain, and every step is narrated to the dashboard
+as `agent-log` events. It is what the dashboard's UNLEASH button drives, and the one service
+that consumes the SDK rather than exposing it.
 
 ## Structure
 
@@ -125,6 +131,37 @@ an AI agent's `tools/call` is what triggers the on-chain micropayment. One tool
 - No `test/` directory and no `test` script — the payment guard is covered by
   `packages/mcp`'s own suite and the copied `reportReceipt.ts` by Task 4's; what is left here
   is Horizon mappings plus SDK wiring. Same posture as `examples/fastify-api`.
+- `examples/agent/src/env.ts` — `Env` type + `readEnv()`, copied per-service from
+  `examples/express-api/src/env.ts` but with the largest divergence of any copy: `required`
+  is `["DEMO_BUYER_SECRET", "INGEST_SECRET", "EXPRESS_API_URL", "HONO_API_URL",
+  "FASTIFY_API_URL", "MCP_SERVER_URL"]` (`env.ts:25-32`) and the port default is `4605`
+  (`env.ts:48`). `Env` shares none of the seller fields — no `payTo`/`mppSecret` — because
+  this service sells nothing (`env.ts:9-20`).
+- `examples/agent/src/reportReceipt.ts` — byte-for-byte copy of
+  `examples/express-api/src/reportReceipt.ts`; see that entry above. This is the only service
+  that uses its `agent-log` arm.
+- `examples/agent/src/narrate.ts` — `Narrator` type + `createNarrator()` (`narrate.ts:6`),
+  a thin wrapper that mirrors each line to stdout and posts it as an `agent-log` ingest event.
+- `examples/agent/src/economy.ts` — the shopping list and the narration layer: the `Buyable`
+  type (`economy.ts:11`), `buildEconomy()` (`economy.ts:142`) which assembles the six
+  buyables, `discoverUsdcIssuer()` (`economy.ts:133`), the four exported summarizers
+  (`economy.ts:71,83,102,113`), `describeBuyFailure()` (`economy.ts:124`), and
+  `scriptedTour()` (`economy.ts:213`) — the deterministic fallback lives here, there is no
+  separate `scripted.ts`.
+- `examples/agent/src/claude.ts` — `runClaudeMission()` (`claude.ts:21`), the
+  `@anthropic-ai/sdk` tool-use loop, bounded by `MAX_TURNS = 8` (`claude.ts:5`). No payment
+  code and no HTTP server code — it only calls `Buyable.buy()`.
+- `examples/agent/src/run.ts` — `runMission()` (`run.ts:10`), the pure Claude-or-scripted
+  orchestrator (every dependency injected, so `test/run.test.ts` drives it without network),
+  plus the `MISSIONS` rotation list (`run.ts:37`).
+- `examples/agent/src/server.ts` — `buildApp(deps): Hono` (`server.ts:4`), two routes:
+  `GET /healthz` and the bearer-guarded `POST /run`.
+- `examples/agent/src/main.ts` — entrypoint and the only place payment SDKs are constructed:
+  `readEnv()`, the narrator, the per-run `createPayingFetch` + MCP client (`main.ts:41,55`),
+  the `running` concurrency flag and `startRun()` (`main.ts:96`), `serve()` (`main.ts:107`),
+  and the 5-second boot run (`main.ts:112`).
+- `examples/agent/test/run.test.ts` — the orchestration contract, `scriptedTour`'s per-item
+  isolation, and the purchase summarizers (see Testing below).
 
 ## Endpoints / Public Surface
 
@@ -218,6 +255,23 @@ truth for both the guard and every human-readable description.
   (`main.ts:14-21`).
 - `GET /healthz` — free. `200 { ok: true }` (`main.ts:22-24`).
 
+`examples/agent`'s HTTP surface (`examples/agent/src/server.ts:4-12`) is a **trigger**, not a
+storefront — this service buys, it never sells:
+
+- `GET /healthz` — free, no auth. `200 { ok: true }` (`server.ts:6`).
+- `POST /run` — header `Authorization: Bearer <INGEST_SECRET>`. `401 { error:
+  "unauthorized" }` on a missing or wrong token, `409 { error: "run_in_progress" }` when a
+  run is already in flight, otherwise `202 { status: "started" }` and the run proceeds in the
+  background (`server.ts:7-11`). The response never waits for the mission: everything the
+  caller learns afterwards arrives on the dashboard feed. Only the dashboard's `/unleash`
+  calls this in the demo, with the same shared `INGEST_SECRET`.
+- No route lists what the agent buys — the economy is `examples/agent/src/economy.ts:142`'s
+  `buildEconomy()` and the README's table, not an HTTP index.
+
+Beyond HTTP, the service fires **one run 5 seconds after boot** (`main.ts:112-114`) so the
+dashboard is never empty when judges first open it, and it emits a stream of `agent-log`
+ingest events throughout every run (the `/ingest` contract above).
+
 TS surface consumed by later tasks:
 
 - `buildApp(deps: Deps): Hono` (`examples/dashboard/src/server.ts:18`) — `Deps` = `{
@@ -265,6 +319,32 @@ TS surface consumed by later tasks:
 - `networkStatus(f?)` / `accountSummary(account, f?)` / `assetStats(code, issuer, f?)` /
   `whaleWatch(f?)` (`examples/mcp-server/src/intel.ts:22,34,63,96`) — all
   `Promise<Record<string, unknown>>`; `f` defaults to global `fetch`.
+- `Narrator` (`examples/agent/src/narrate.ts:3`) — `(message: string) => void`;
+  `createNarrator({ dashboardUrl, ingestSecret })` (`narrate.ts:6`) returns one.
+- `Buyable` (`examples/agent/src/economy.ts:11-21`) — `{ name: string; description: string;
+  service: string; price: string; buy: () => Promise<unknown>; summarize: (intel: unknown) =>
+  string }`. `service`/`price` live in this table because `PayEvent` carries neither.
+- `buildEconomy(deps): Buyable[]` (`examples/agent/src/economy.ts:142`) — `deps` = `{
+  payingFetch: typeof fetch; rawFetch?: typeof fetch; urls: { express, hono, fastify };
+  mcpCall?: (tool, args) => Promise<unknown>; buyerPublicKey: string }`.
+- `scriptedTour(economy: Buyable[], narrate: Narrator): Promise<void>`
+  (`examples/agent/src/economy.ts:213`) — the deterministic fallback; never throws per item.
+- `discoverUsdcIssuer(rawFetch?): Promise<string>` (`examples/agent/src/economy.ts:133`).
+- `summarizeAssetReport` / `summarizeAccount` / `summarizeWhales` / `summarizeFeeStats`
+  (`examples/agent/src/economy.ts:71,83,102,113`) and `describeBuyFailure`
+  (`economy.ts:124`) — all `(unknown) => string`, all pure, all unit-tested.
+- `runClaudeMission(opts): Promise<void>` (`examples/agent/src/claude.ts:21`) — `opts` = `{
+  apiKey: string; model: string; mission: string; economy: Buyable[]; narrate: Narrator }`.
+- `runMission(deps): Promise<MissionResult>` (`examples/agent/src/run.ts:10`) — `deps` = `{
+  mission: string; narrate: Narrator; runClaude: (() => Promise<void>) | undefined;
+  runScripted: () => Promise<void> }`; `MissionResult` = `{ mode: "claude" | "scripted" }`
+  (`run.ts:3`). `MISSIONS` (`run.ts:37`) is a 3-entry `as const` tuple.
+- `buildApp(deps: { ingestSecret: string; startRun: () => boolean }): Hono`
+  (`examples/agent/src/server.ts:4`).
+- `readEnv(): Env` (`examples/agent/src/env.ts:23`) — `Env` = `{ buyerSecret: string;
+  anthropicApiKey?: string; anthropicModel: string; expressApiUrl: string; honoApiUrl:
+  string; fastifyApiUrl: string; mcpServerUrl: string; dashboardUrl?: string; ingestSecret:
+  string; port: number }` (`env.ts:9-20`).
 
 ## Key Methods (`file:line`)
 
@@ -398,6 +478,63 @@ TS surface consumed by later tasks:
   (`examples/mcp-server/src/intel.ts:96-108,111-126`) — mirrors
   `examples/hono-api/src/whales.ts:14-58` including the **absence** of a size floor; the
   window (200) and cap (10) are module constants (`intel.ts:82-84`), not `Env` fields.
+- `createNarrator(opts)` (`examples/agent/src/narrate.ts:6-12`) — wraps
+  `createReceiptReporter({ service: "agent", … })` and returns a closure that `console.log`s
+  `[agent] <message>` and fires the same string at `/ingest` as `{ kind: "agent-log" }`.
+  Inherits the reporter's fire-and-forget contract wholesale: a down dashboard costs the run
+  nothing.
+- `buildEconomy(deps)` (`examples/agent/src/economy.ts:142-211`) — returns the four HTTP
+  buyables unconditionally and the two MCP buyables **only when `deps.mcpCall` is supplied**
+  (`economy.ts:187-210`). Each `buy()` is a closure over its own URL/arguments, so every tool
+  Claude sees takes no input — the `input_schema` is an empty object (`claude.ts:31`).
+  `buy_asset_report` calls `discoverUsdcIssuer` inside `buy()` (`economy.ts:150`), so the
+  issuer is resolved per purchase, not per process.
+- `discoverUsdcIssuer(rawFetch)` (`examples/agent/src/economy.ts:133-140`) — one free
+  Horizon `GET /assets?asset_code=USDC&limit=1`, reading `_embedded.records[0].asset_issuer`.
+  Throws (rather than substituting a placeholder) when Horizon is unreachable or returns no
+  USDC record, so the failure is narrated instead of buying a report on a made-up asset.
+- `describeIntel(intel, describe)` (`examples/agent/src/economy.ts:62-69`) — the shared front
+  of all four summarizers and the reason narration cannot lie: an `intel` that is a bare
+  string (an MCP `isError` message) or carries an `error` field is quoted verbatim, and only
+  a payload with neither reaches the field-reading `describe` callback. Without it, an
+  `{"error":"horizon_unavailable"}` body would narrate as "wallet holds no balances" — a
+  fabricated claim about a purchase that returned nothing.
+- `summarizeWhales(intel)` (`examples/agent/src/economy.ts:102-111`) — returns `no native
+  payments found in <window>` when `count` is `0`/absent **or** `largestXlm` is absent,
+  rather than printing `null`. It reads the post-Task-5 `{ window, count, largestXlm }`
+  envelope; there is no `thresholdXlm` field to read anywhere anymore (see the hono-api
+  gotcha above).
+- `describeBuyFailure(err)` (`examples/agent/src/economy.ts:124-127`) — the one place a
+  `SpendLimitExceeded` (`packages/client/src/limits.ts:5`) is distinguished from an ordinary
+  failure, so a refused purchase narrates as the guardrail working rather than as a broken
+  demo. Used by both run modes (`economy.ts:219`, `claude.ts:76`).
+- `scriptedTour(economy, narrate)` (`examples/agent/src/economy.ts:213-222`) — iterates the
+  economy sequentially with a per-item `try/catch`, so one dead seller costs exactly one
+  purchase. Sequential on purpose: concurrent buys would interleave the narration into
+  nonsense and race the spend tracker's reservations.
+- `runClaudeMission(opts)` (`examples/agent/src/claude.ts:21-84`) — builds one no-argument
+  tool per `Buyable` (`claude.ts:28-32`), then loops up to `MAX_TURNS = 8`. Continues only
+  while `stop_reason === "tool_use"` **and** at least one `tool_use` block is present
+  (`claude.ts:54`); every other stop reason ends the run with a narrated brief. A failed
+  purchase becomes an `is_error: true` `tool_result` (`claude.ts:78`), so Claude learns the
+  refusal and can adapt instead of the whole mission collapsing.
+- `runMission(deps)` (`examples/agent/src/run.ts:10-35`) — the demo's never-fizzle guarantee
+  in 25 lines, and the only file in this service with a test suite. `runClaude` failing for
+  *any* reason falls through to `runScripted` (`run.ts:24-26`); `runScripted` failing is
+  narrated and swallowed (`run.ts:31-33`). It cannot throw, which is what lets `startRun`'s
+  bookkeeping stay simple.
+- `connectMcp(payingFetch)` (`examples/agent/src/main.ts:41-53`) — connects a `Client` over
+  `payingHttpTransport` and wraps it with `wrapPaidMcpClient`. Returns `undefined` on a
+  connection failure after narrating it, which is what makes the MCP buyables optional in
+  `buildEconomy` rather than guaranteed-to-fail.
+- `oneRun()` (`examples/agent/src/main.ts:55-94`) — one mission: rotate `MISSIONS`
+  (`main.ts:56-57`), build a **fresh** `createPayingFetch` so the spend limits reset per run
+  (`main.ts:60-73`), connect MCP, build the economy, run the mission, then close the MCP
+  client with `.catch(() => undefined)` (`main.ts:93`).
+- `startRun()` (`examples/agent/src/main.ts:96-105`) — the concurrency gate. Sets `running`
+  synchronously before the async work starts, and clears it in a `.finally` behind a
+  `.catch` that narrates the crash — so no failure mode can leave `/run` answering `409`
+  forever.
 - `POST /mcp` handler (`examples/mcp-server/src/main.ts:37-58`) — registered as a
   **synchronous** handler that immediately enters `void (async () => { … })()` with its own
   `try/catch`, never as a bare `async` handler (see the Express-4 gotcha, which applies here
@@ -478,6 +615,26 @@ TS surface consumed by later tasks:
   raw shape object (`{ account: z.string() }`), not a wrapped `z.object({...})`.
 - `tsx` (^4.19.0) — runtime dependency, same no-build-step rationale as the other examples.
 - No `@stellarpay/core` dependency: this service never builds a `StellarpayConfig`.
+
+`examples/agent` (`examples/agent/package.json:12-22`) — the only example that depends on the
+**client** half of the SDK:
+
+- `@anthropic-ai/sdk` (^0.57.0, resolved `0.57.0`) — the tool-use loop. Only the default
+  export (the `Anthropic` client class) and the `Anthropic.*` namespace types are used.
+- `@stellarpay/client` (`workspace:*`) — `createPayingFetch` (`packages/client/src/index.ts:100`),
+  `PayEvent` (`events.ts:2-7`) and `SpendLimitExceeded` (`limits.ts:5`).
+- `@stellarpay/mcp` (`workspace:*`) — the **client** exports only: `payingHttpTransport` and
+  `wrapPaidMcpClient` (`packages/mcp/src/client.ts:55,36`). `toolPayments` (the server half
+  `examples/mcp-server` uses) is never imported here.
+- `@modelcontextprotocol/sdk` (^1.30.0, resolved `1.30.0`) — `Client` from
+  `client/index.js`; `connect(transport)` (`client/index.d.ts:155`), `callTool(params)`
+  (`:431`) and the inherited `close()` (`shared/protocol.d.ts:287`).
+- `@stellar/stellar-sdk` (pinned `16.2.0` by the root `pnpm.overrides`) — `Keypair` only,
+  to derive the buyer's public key from the secret for the two "my own wallet" buys.
+- `@stellarpay/core` (`workspace:*`) — `NETWORKS` only, for the testnet `rpcUrl`.
+- `hono` (^4) + `@hono/node-server` (^2.0.12) — the two-route trigger API.
+- `tsx` (^4.19.0) — runtime dependency, same no-build-step rationale as the other examples.
+- No seller adapter (`@stellarpay/express|hono|fastify`): this service has no paywall.
 
 ## Gotchas & Invariants
 
@@ -741,6 +898,68 @@ TS surface consumed by later tasks:
 - **`reportReceipt.ts` and `env.ts` are duplicated here too, on purpose** — same rule as the
   other example services (see express-api's gotcha).
 
+`examples/agent`:
+
+- **The spend limits cover the HTTP purchases only, and the narration says so.**
+  `createPayingFetch`'s `SpendTracker` gates everything that flows through `payingFetch`
+  (`packages/client/src/index.ts:132,142`), which is the four HTTP buys. The two MCP buys
+  settle through `wrapPaidMcpClient`'s own `stellar.charge` client leg
+  (`packages/mcp/src/client.ts:36-48`), which takes **no** limits argument — the MCP
+  server's paywall is a JSON-RPC `-32042` inside a `200` HTTP response, so `payingFetch`
+  never sees a `402` and never consults the tracker. Consequences, all deliberate: the
+  budget line reads "per paid HTTP call" (`main.ts:84`), `paidCount` counts `PayEvent`s and
+  is therefore an **HTTP** count (`main.ts:66-69,92`), and a run whose HTTP budget is
+  exhausted can still buy both MCP tools. Confirmed live 2026-08-04 (see Verified Against).
+  Closing the gap means a limits-aware MCP client leg in `packages/mcp`, not a patch here.
+- **`PayEvent` carries no amount** (`packages/client/src/events.ts:2-7`), so every dollar
+  figure the agent says comes from `Buyable.price` (`economy.ts:11-21`), hand-kept in sync
+  with each seller's own route/tool price. A price edited in a seller's `StellarpayConfig`
+  and not here makes the agent narrate a stale number — there is no compile-time link
+  between the two, and nothing at runtime cross-checks them.
+- **Narration must never describe an unsuccessful purchase as data.** `describeIntel`
+  (`economy.ts:62-69`) is the guard; every summarizer goes through it, and the em-dash
+  `shown()` helper (`economy.ts:29`) keeps a missing field from rendering as `undefined` or
+  `null`. This is not stylistic: the feed is the demo's voice-over, and a fabricated number
+  on it is the single worst failure this service can produce. Four of the thirteen tests
+  exist purely to pin this down.
+- **A run that hits a spend limit is a success, not an error.** `SpendLimitExceeded` is
+  thrown from inside `payingFetch` (x402 leg: `packages/client/src/index.ts:143`; MPP leg:
+  `packages/client/src/mppLeg.ts`'s `onChallenge` gate) and caught per item by both run
+  modes, so the tour continues with the next buyable. Do not "fix" this by widening the
+  limits when it trips on camera.
+- **The Claude loop must stay bounded.** `MAX_TURNS = 8` (`claude.ts:5`) is the only thing
+  between a confused model and an unbounded spend, since each turn may contain several
+  `tool_use` blocks. The spend limits are the second line of defence, not the first.
+- **`stop_reason` has six values, not two.** The installed SDK types it as `'end_turn' |
+  'max_tokens' | 'stop_sequence' | 'tool_use' | 'pause_turn' | 'refusal'`
+  (`@anthropic-ai/sdk/resources/messages/messages.d.ts:430`). `claude.ts:54` continues only
+  on `'tool_use'` **and** a non-empty `tool_use` block list, and treats every other value as
+  end-of-mission — including `'pause_turn'`, which in a server-tool workflow would mean
+  "send this back to continue". This service uses no server tools, so ending is correct;
+  adding one would make that branch wrong.
+- **A run must never be able to leave `POST /run` stuck at `409`.** `startRun`
+  (`main.ts:96-105`) sets `running` synchronously, and clears it in `.finally()` behind a
+  `.catch()`. `runMission` is additionally total by construction (`run.ts:10-35`, it catches
+  both paths), so the `.catch` is a backstop for the wiring around it — `connectMcp`, the
+  economy build, the MCP `close()` — not for mission failures.
+- **The MCP buyables are optional at run time.** `buildEconomy` includes them only when
+  `mcpCall` is supplied (`economy.ts:187-210`), and `connectMcp` returns `undefined` after
+  narrating a connection failure (`main.ts:47-50`). A dead mcp-server therefore costs two
+  buyables, not the whole run. Deliberate deviation from the plan's `mcpCall`-is-required
+  signature; spec §8's "the button never fizzles" is the reason.
+- **The buyer's wallet signs real testnet transactions and pays for its own reads.** Two of
+  the six buys are deep-dives on the agent's *own* account, so the balances it narrates
+  visibly shrink across a demo session as it spends. That is a feature on camera; it also
+  means a demo wallet needs topping up eventually.
+- **`env.ts` requires more than the sellers' copies, and requires `INGEST_SECRET`.** On the
+  four selling services `INGEST_SECRET` is optional (unset → narration is a no-op). Here it
+  is required (`env.ts:25-32`) because it is also the bearer token guarding `POST /run` — the
+  endpoint that spends money. `DASHBOARD_URL` stays optional: an agent that cannot narrate
+  still buys.
+- **Missions rotate per *process*, not per day.** `missionCounter` (`main.ts:22`) is a
+  module-level integer, so a restart starts back at mission 1 — including the boot run.
+  Consecutive presses of UNLEASH do differ, which is what the spec asked for.
+
 ## Testing
 
 - `examples/dashboard/test/buffer.test.ts` — seq assignment/monotonicity and
@@ -836,6 +1055,33 @@ TS surface consumed by later tasks:
   paid calls through `wrapPaidMcpClient(client, { secret, network: "stellar:testnet", rpcUrl })`
   over `payingHttpTransport("http://localhost:4604/mcp", fetch)` from `@stellarpay/mcp` and read
   the dashboard's `/events` stream to confirm the receipts arrived.
+- `examples/agent/test/run.test.ts` — 13 tests in three groups, all offline. **`runMission`**
+  (4, the brief's TDD set): the Claude path is used and the scripted tour is never touched
+  when Claude succeeds; a throwing `runClaude` falls back and says "scripted"; a missing
+  `runClaude` skips Claude entirely; and a throwing `runScripted` still resolves
+  `{ mode: "scripted" }` with a narrated "failed" line rather than rejecting.
+  **`scriptedTour`** (2): the exact narration sequence for two successful buys (asserted as a
+  whole array, so a wording regression is caught), and that a rejecting first item is narrated
+  while the second item is still bought. **Purchase summaries** (7): real numbers read out of
+  asset-report/account/whale/fee payloads; a missing order book described as missing rather
+  than priced; an empty whale window reported as empty rather than as a `null` largest
+  payment; and a seller `error` field or a bare string quoted verbatim instead of being
+  described as data.
+- Run: `pnpm --filter @stellarpay-examples/agent test`. Same root-suite caveat as the other
+  examples — `pnpm test` from repo root never includes `examples/*`.
+- Typecheck: `pnpm --filter @stellarpay-examples/agent typecheck` (or `pnpm typecheck` from
+  repo root).
+- **No test covers `runClaudeMission`, `buildEconomy`, `connectMcp`, or `buildApp`** — they are
+  SDK wiring, and the Anthropic loop in particular has no seam that would make a mocked test
+  worth more than the live run recorded below. `POST /run`'s 202/409/401 behavior is verified
+  live, not by a `test/server.test.ts`; the same gap `examples/express-api` has.
+- Live verification of `examples/agent` is the whole-economy rehearsal: run all six services
+  locally (dashboard `:4600`, express `:4601`, hono `:4602`, fastify `:4603`, mcp `:4604`,
+  agent `:4605`), each with its own `.env` sharing one `INGEST_SECRET` and with the dashboard's
+  `AGENT_URL` pointing at `:4605`. Then watch the boot run, press UNLEASH (or `POST /run` with
+  the bearer token), and read `/events`. Both run modes must be exercised — unset
+  `ANTHROPIC_API_KEY` to force the scripted tour — and the spend limits must be temporarily
+  tightened to see a refusal narrated. See Verified Against for the recorded results.
 
 ## Verified Against
 
@@ -844,20 +1090,40 @@ TS surface consumed by later tasks:
   `examples/express-api/src/{env,reportReceipt,intel,server,main}.ts`,
   `examples/hono-api/src/{env,reportReceipt,whales,server,main}.ts`,
   `examples/fastify-api/src/{env,reportReceipt,fees,server,main}.ts`,
-  `examples/mcp-server/src/{env,reportReceipt,intel,mcp,main}.ts`), plus the cross-package
-  citations into `packages/core/src/{config,router,stellarpay,types}.ts`,
+  `examples/mcp-server/src/{env,reportReceipt,intel,mcp,main}.ts`,
+  `examples/agent/src/{env,reportReceipt,narrate,economy,claude,run,server,main}.ts`), plus
+  the cross-package citations into `packages/core/src/{config,router,stellarpay,types}.ts`,
   `packages/core/src/schemes/{mppCharge,x402}.ts`, `packages/express/src/index.ts`,
-  `packages/hono/src/index.ts`, `packages/fastify/src/index.ts`, and
+  `packages/hono/src/index.ts`, `packages/fastify/src/index.ts`,
+  `packages/client/src/{index,events,limits,mppLeg}.ts`, and
   `packages/mcp/src/{server,client}.ts`.
 - `hono` resolved at `4.12.33`, `@hono/node-server` at `2.0.12`, `express` at `4.22.2`,
-  `fastify` at `4.29.1`, `@modelcontextprotocol/sdk` at `1.30.0`, `zod` at `4.4.3`, and
-  `mppx` at `0.6.31` in `node_modules` — all match the versions this doc's line citations
-  were checked against.
+  `fastify` at `4.29.1`, `@modelcontextprotocol/sdk` at `1.30.0`, `zod` at `4.4.3`,
+  `mppx` at `0.6.31`, and `@anthropic-ai/sdk` at `0.57.0` in `node_modules` — all match the
+  versions this doc's line citations were checked against.
+- The `@anthropic-ai/sdk` 0.57.0 surface `examples/agent/src/claude.ts` calls was read
+  directly from the installed typings before the loop was written, not assumed: default
+  export = the `Anthropic` client class (`client.d.ts:203`) with `ClientOptions.apiKey`
+  (`client.d.ts:19,23`), instance field `messages: API.Messages` (`client.d.ts:205`),
+  `messages.create(body)` overloaded so a body without `stream` returns `APIPromise<Message>`
+  (`resources/messages/messages.d.ts:29`), `MessageCreateParamsBase` carrying `max_tokens` /
+  `messages` / `model` / `system?` / `tools?: Array<ToolUnion>`
+  (`messages.d.ts:816,907,913,952,1058`), `Message.content: Array<ContentBlock>` where
+  `ContentBlock` includes `TextBlock` and `ToolUseBlock` (`messages.d.ts:212,138,431,651`),
+  `StopReason` = `'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use' | 'pause_turn' |
+  'refusal'` (`messages.d.ts:430`), `Tool.input_schema: { type: 'object'; properties?: unknown
+  | null }` (`messages.d.ts:502-544`), `ToolResultBlockParam` = `{ tool_use_id, type:
+  'tool_result', content?, is_error? }` (`messages.d.ts:612-621`), and every one of
+  `MessageParam` / `TextBlock` / `ToolUseBlock` / `ToolResultBlockParam` re-exported under the
+  `Anthropic` namespace (`client.d.ts:214`). `Model` is a known-id union widened with
+  `(string & {})` (`messages.d.ts:339`), which is why the env-configurable
+  `claude-sonnet-5` typechecks; that model id was additionally confirmed live against the API.
 - All 21 dashboard tests pass (`buffer`: 3, `cooldown`: 1, `ingest`: 9, `server`: 8), all
-  9 express-api tests pass (`reportReceipt`: 3, `intel`: 6), and both hono-api tests pass
-  (`whales`: 2); `examples/fastify-api` and `examples/mcp-server` ship no tests, by design (see
+  9 express-api tests pass (`reportReceipt`: 3, `intel`: 6), both hono-api tests pass
+  (`whales`: 2), and all 13 agent tests pass (`run`: 13 across three describe blocks);
+  `examples/fastify-api` and `examples/mcp-server` ship no tests, by design (see
   Testing above). The repo-root `pnpm typecheck` (`pnpm -r typecheck`, every package plus all
-  five examples; the root itself declares no `typecheck` script) succeeds; the root `pnpm test`
+  six examples; the root itself declares no `typecheck` script) succeeds; the root `pnpm test`
   suite (`packages/*`, 88 tests) is unaffected — `examples/*` tests run only via their own
   per-package filter, never the root suite.
 - Horizon response shapes for `/assets`, `/order_book`, `/accounts`, and
@@ -933,3 +1199,40 @@ TS surface consumed by later tasks:
   Four consecutive paid calls on one un-restarted process all behaved correctly, and the
   credential-replay rejection described in the once-per-process gotcha above was captured in
   the same session.
+- `examples/agent` verified live end-to-end 2026-08-04 with **all six services running
+  locally** (`:4600`–`:4605`, one shared `INGEST_SECRET`, dashboard `AGENT_URL` →
+  `http://localhost:4605`), across four real runs on Stellar testnet:
+  - **Claude path, boot run.** Mission 1 (USDC market brief). `claude-sonnet-5` chose two of
+    the six tools on its own — `buy_asset_report` (x402, `$0.02`, settled with tx
+    `dd3338916ad3…`) and `buy_fee_stats` (mpp-charge, `$0.005`) — then ended the loop with
+    `stop_reason: "end_turn"` and a written brief. Narrated numbers matched the payloads:
+    `USDC supply 99950.0000000 held by 2 accounts; no live XLM order book` and `ledger
+    3966615, capacity usage 0.12 → congestion low`.
+  - **Claude path via the judge's button.** `POST /unleash` → `202 {"status":"unleashed"}`,
+    which drove `POST /run`. Mission rotated to 2 (wallet + whales); Claude bought
+    `buy_account_deep_dive` (mpp-charge, `$0.02`) and `buy_whale_alerts` (x402, `$0.01`, tx
+    on-feed), narrating `wallet holds 19.7970000 USDC, 9999.9913308 XLM; 10 recent payments
+    on record` and `6 largest native payments from 200 most recent payment ops; biggest
+    40.0000000 XLM`. During that run `POST /run` with the correct bearer returned
+    `409 {"error":"run_in_progress"}`, a wrong bearer `401`, and no bearer `401`.
+  - **Scripted fallback.** With `ANTHROPIC_API_KEY` unset the run narrated `No
+    ANTHROPIC_API_KEY configured — running the scripted tour` and bought **all six**
+    buyables — `$0.085` total — including both MCP tool calls, which returned real data
+    (`wallet holds 19.7220000 USDC, 9999.9884444 XLM`). The dashboard feed for that one run
+    carried 27 events: agent narration interleaved with receipts from **all four selling
+    services** (express-api ×2, mcp-server ×2, hono-api ×1, fastify-api ×1), each with the
+    right `route`/`scheme`/`amount`. `largestXlm: null` on a quiet window narrated as `no
+    native payments found in 200 most recent payment ops` — the honest-empty path, live.
+  - **Spend limits.** With `LIMITS` temporarily tightened to `{ maxPerCall: "$0.015",
+    maxTotal: "$0.012" }` (reverted after), the scripted tour produced one refusal per
+    reason on **both** payment legs and finished cleanly: `buy_asset_report` blocked
+    `per-call-limit` on the x402 leg, `buy_account_deep_dive` blocked `per-call-limit` on the
+    MPP leg, `buy_whale_alerts` settled (`$0.01`), `buy_fee_stats` blocked `total-limit`, and
+    the run ended `Mission complete (mode: scripted)` with no crash and `running` cleared.
+    Both MCP tool calls still settled during that run — the live confirmation of the
+    limits-cover-HTTP-only gotcha above.
+  - One cosmetic finding: a `blocked` `PayEvent` from the **MPP** leg carries
+    `challenge.realm` as its `url` (`packages/client/src/mppLeg.ts`'s `onChallenge`), which on
+    localhost is the bare string `localhost` — so the refusal line names the host, not the
+    route, for MPP blocks. x402 blocks carry the full URL. Truthful either way, less specific
+    for one of the two legs.
