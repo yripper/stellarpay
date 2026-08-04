@@ -44,7 +44,8 @@ sells live Horizon-testnet data behind two paywalled routes, one per payment sch
   fetchers (`fetchAssetSummary`, `fetchAssetReport`, `fetchAccountDeepDive`). Each takes an
   injected `fetch` as its last parameter, defaulting to global `fetch`, so tests run offline.
 - `examples/express-api/src/server.ts` — `buildApp(env): Express`, the pure app factory that
-  builds the `StellarpayConfig`, mounts the paywall, and registers the five routes.
+  builds the `StellarpayConfig`, mounts the paywall, and registers the five routes behind an
+  `intel()` handler adapter that keeps a Horizon failure from crashing the process.
 - `examples/express-api/src/main.ts` — entrypoint: `readEnv()` then `buildApp(env).listen()`.
 - `examples/express-api/test/{reportReceipt,intel}.test.ts` — unit tests for the reporter's
   wire format and failure-swallowing, and for the three fetchers via an injected `fetch`.
@@ -72,20 +73,20 @@ sells live Horizon-testnet data behind two paywalled routes, one per payment sch
   5s timeout — an unreachable or failing agent never turns the `202` into an error
   (`server.ts:75-89`).
 
-`examples/express-api`'s HTTP surface (`examples/express-api/src/server.ts:44-61`). Prices
+`examples/express-api`'s HTTP surface (`examples/express-api/src/server.ts:66-83`). Prices
 come from the `PRICES` constant (`server.ts:8`), both `"$0.02"`:
 
 - `GET /` — free. JSON service index: name, network, and every route with its price, scheme,
-  and one-line description (`server.ts:44-55`). The first thing a judge curls.
-- `GET /healthz` — free. `200 { ok: true }` (`server.ts:56-58`).
+  and one-line description (`server.ts:66-77`). The first thing a judge curls.
+- `GET /healthz` — free. `200 { ok: true }` (`server.ts:78-80`).
 - `GET /summary/:code/:issuer` — free. Asset teaser from Horizon `/assets`: `code`, `issuer`,
-  `supply`, `holders`, `flags`, `source` (`server.ts:59`).
+  `supply`, `holders`, `flags`, `source` (`server.ts:81`).
 - `GET /report/:code/:issuer` — **$0.02, x402**. Everything `/summary` returns plus a
-  `market` block with the top of the asset's XLM order book (`server.ts:60`). Paywall key:
+  `market` block with the top of the asset's XLM order book (`server.ts:82`). Paywall key:
   `"GET /report/*"` (`server.ts:26`).
 - `GET /deep-dive/:account` — **$0.02, mpp-charge**, gas-sponsored when `DEMO_SPONSOR_SECRET`
   is set. Account `balances`, `subentries`, `flags`, and `recentPayments` (10 most recent)
-  (`server.ts:61`). Paywall key: `"GET /deep-dive/*"` (`server.ts:27-32`).
+  (`server.ts:83`). Paywall key: `"GET /deep-dive/*"` (`server.ts:27-33`).
 
 Horizon failures map through both paid and free intel routes identically: `404` for an
 unknown account or an empty asset record set, `502 {"error":"horizon_unavailable"}` for any
@@ -169,7 +170,7 @@ TS surface consumed by later tasks:
 - `fetchAccountDeepDive(account, f)` (`examples/express-api/src/intel.ts:85-109`) — two
   Horizon calls. Only the `/accounts` call gates the status; a failing `/payments` call
   degrades to an empty `recentPayments` array (`intel.ts:90-97`).
-- `buildApp(env)` (`examples/express-api/src/server.ts:10-62`) — builds the reporter
+- `buildApp(env)` (`examples/express-api/src/server.ts:10-84`) — builds the reporter
   (`server.ts:11-15`), then the `StellarpayConfig` with `rpcUrl` wired explicitly from
   `NETWORKS["stellar:testnet"].rpcUrl` (`server.ts:21`) and `facilitatorApiKey`/
   `sponsorSecret`/`sponsorGas` spread in conditionally so an unset optional var never lands
@@ -288,6 +289,17 @@ TS surface consumed by later tasks:
   do not "DRY" them into a shared package without revisiting that decision (spec §3).
 - **`env.ts` loads `.env` as an import side effect** (`env.ts:1-7`), before `readEnv()` is
   ever called. Importing this module for its types alone still performs the load.
+- **Never register a bare `async` route handler on this Express app.** Express 4 does not
+  catch rejections from `async` handlers, so a rejected handler escapes as an unhandled
+  rejection — which terminates the process under Node 22's default
+  `--unhandled-rejections=throw`. `intel.ts`'s fetchers deliberately do not swallow `fetch`
+  failures (DNS, TLS, connection reset all surface as a thrown `TypeError`), so every intel
+  route goes through the `intel()` adapter (`server.ts:51-64`), which catches, logs
+  server-side, and answers `502 {"error":"horizon_unavailable"}` behind a `res.headersSent`
+  guard. Verified by repro: with a permanently failing global `fetch`, a bare `async (req,
+  res) => …` handler produced `UnhandledPromiseRejection: fetch failed` and killed the
+  process; through `intel()` the same request returns `502` and the server stays up. A
+  judge who paid $0.02 during a Horizon blip would otherwise take the demo down.
 - **`buildApp()` is pure but not free.** `stellarpayExpress(config)` calls `stellarpay(config)`
   eagerly (`packages/express/src/index.ts:37-40`), which runs `parseConfig` and instantiates
   a scheme module per configured scheme — so an invalid config throws synchronously from
@@ -325,6 +337,11 @@ TS surface consumed by later tasks:
   a new example does **not** extend the root suite, so run its filter explicitly.
 - Typecheck: `pnpm --filter @stellarpay-examples/<name> typecheck` (or `pnpm typecheck`
   from repo root, which runs `pnpm -r typecheck` across every workspace package).
+- **No server-level test file exists for `examples/express-api`** — the brief's file list
+  scoped it to `test/{reportReceipt,intel}.test.ts`. The `intel()` adapter's
+  rejection-to-`502` behavior is therefore covered by a manual repro (see the gotcha above),
+  not by a regression test. A `test/server.test.ts` driving `buildApp()` with a rejecting
+  `fetch` would close that gap.
 - Live verification of `examples/express-api` is not covered by any automated test — it
   needs testnet funds. The manual procedure: run the dashboard on `:4600` and the API on
   `:4601` with `DASHBOARD_URL`/`INGEST_SECRET` pointing at it, curl the free routes, curl a

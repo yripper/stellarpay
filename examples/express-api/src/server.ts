@@ -37,8 +37,30 @@ export function buildApp(env: Env): Express {
   const app = express();
   app.use(stellarpayExpress(config)); // paywall first, routes after — adapter contract
 
-  const send = (res: express.Response, out: IntelResult): void => {
-    res.status(out.status).json(out.body);
+  /**
+   * Adapts an intel fetcher into an Express handler.
+   *
+   * The try/catch is load-bearing, not defensive padding: Express 4 does not catch
+   * rejections from `async` handlers, so a rejected fetcher escapes as an unhandled
+   * rejection, which terminates the process under Node 22's default
+   * `--unhandled-rejections=throw`. Horizon is a third-party network dependency that
+   * can fail at any moment (DNS, TLS, connection reset — all surface as a thrown
+   * `TypeError` from `fetch`, which `intel.ts` deliberately does not swallow), so
+   * without this one `fetch failed` would take the whole paid service down mid-demo.
+   */
+  const intel = (fetcher: (req: express.Request) => Promise<IntelResult>): express.RequestHandler => {
+    return (req, res) => {
+      void (async () => {
+        try {
+          const out = await fetcher(req);
+          res.status(out.status).json(out.body);
+        } catch (err) {
+          // Logged server-side only; the body never echoes the upstream error.
+          console.error("[express-api] intel fetch failed", err);
+          if (!res.headersSent) res.status(502).json({ error: "horizon_unavailable" });
+        }
+      })();
+    };
   };
 
   app.get("/", (_req, res) => {
@@ -56,8 +78,8 @@ export function buildApp(env: Env): Express {
   app.get("/healthz", (_req, res) => {
     res.json({ ok: true });
   });
-  app.get("/summary/:code/:issuer", async (req, res) => send(res, await fetchAssetSummary(req.params.code, req.params.issuer)));
-  app.get("/report/:code/:issuer", async (req, res) => send(res, await fetchAssetReport(req.params.code, req.params.issuer)));
-  app.get("/deep-dive/:account", async (req, res) => send(res, await fetchAccountDeepDive(req.params.account)));
+  app.get("/summary/:code/:issuer", intel((req) => fetchAssetSummary(req.params.code, req.params.issuer)));
+  app.get("/report/:code/:issuer", intel((req) => fetchAssetReport(req.params.code, req.params.issuer)));
+  app.get("/deep-dive/:account", intel((req) => fetchAccountDeepDive(req.params.account)));
   return app;
 }
