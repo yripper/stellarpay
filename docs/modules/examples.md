@@ -34,16 +34,20 @@ from the dashboard, which it only narrates to) — a Claude tool-use loop
 as `agent-log` events. It is what the dashboard's UNLEASH button drives, and the one service
 that consumes the SDK rather than exposing it.
 
-`examples/private-api` is the one example that does **not** use the stellarpay SDK, and the one
-that does not deploy. It sells the same kind of Horizon-derived intel, but takes payment from a
+`examples/private-api` is the one example that does **not** use the stellarpay SDK. It sells
+the same kind of Horizon-derived intel, but takes payment from a
 Stellar Private Payments shielded pool instead of x402/MPP, so the seller can prove it was paid
 without learning who paid. One shielded transfer (~15s of Groth16 proving) opens a credit line
 worth N requests, spent against an HMAC token — per-request shielded settlement would cost more
 in proving than the data is worth. Verification is one-sided: `POST /line/open` quotes an amount
 with a random tag in the sub-microXLM digits (`1.0906898`, not `1`), unique among lines awaiting
 payment, and the seller polls its **own** shielded balance for that exact figure
-(`src/watcher.ts:43-95`); the buyer transmits nothing but a line id. It runs locally only — the
-prover's circuit artifacts are ~43MB and the `spp` CLI is a native Rust binary. See
+(`src/watcher.ts:43-95`); the buyer transmits nothing but a line id. It deploys to Railway like
+the rest: `examples/private-api/Dockerfile` compiles the `spp` CLI from a pinned commit of its
+public repo on Railway's native amd64 builders (Stellar CLI **v24+** required — `spp onboard`
+derives privacy keys via SEP-53 `stellar message sign`), and `docker-entrypoint.sh` re-derives
+both identities' privacy keys on every boot, which is safe because they are deterministic in the
+Stellar secret. See
 [`examples/private-api/README.md`](../../examples/private-api/README.md) for the live-verified
 timings and the honest limitations (the fee payer is still public; the anonymity set on testnet
 is tiny; balance-delta matching is a heuristic, not a proof of a specific note).
@@ -315,8 +319,9 @@ truth for both the guard and every human-readable description.
   (`main.ts:14-21`).
 - `GET /healthz` — free. `200 { ok: true }` (`main.ts:22-24`).
 
-`examples/private-api`'s HTTP surface (`examples/private-api/src/server.ts:21-113`) — the
-shielded-payment seller, local-only:
+`examples/private-api`'s HTTP surface (`examples/private-api/src/server.ts:35-141`) — the
+shielded-payment seller, live on Railway at
+`https://private-api-production-0d30.up.railway.app`:
 
 - `GET /healthz` — free. `200 { ok: true }`.
 - `GET /` — free. JSON index naming the pool, how to pay, and credits per line.
@@ -333,6 +338,11 @@ shielded-payment seller, local-only:
   destination, because nothing in a shielded payment identifies its sender. The line is marked
   unspendable **before** the refund is attempted, so a request racing the close cannot spend a
   credit that has already been paid back (`line.ts:close`).
+- `POST /demo/run` — free. Drives one full shielded lifecycle (open → pay → detect → spend ×2 →
+  close/refund) as an in-process buyer, narrating each step to the dashboard feed. Answers
+  `202 { status: "started" }` immediately; `409` if a cycle is already running (the `spp` CLI
+  has a single wallet DB) and `503` when no demo buyer is configured (`server.ts:130-141`).
+  This is what the dashboard's **shielded ◆** target triggers.
 
 `examples/agent`'s HTTP surface (`examples/agent/src/server.ts:29-63`) is a **trigger**, not a
 storefront — this service buys, it never sells:

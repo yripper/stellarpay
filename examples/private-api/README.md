@@ -58,9 +58,15 @@ On Horizon, the payment transaction has **zero payment records** — just an
 ## Running it
 
 Requires the [Stellar Private Payments](https://github.com/NethermindEth/stellar-private-payments)
-`spp` CLI, built natively, plus two onboarded identities. **This example runs locally, not on
-Railway** — the prover's circuit artifacts are ~43MB and the CLI is a Rust binary, which is a lot
-to ship into a demo container.
+`spp` CLI, built natively, plus two onboarded identities. **It also runs live on Railway** at
+[private-api-production-0d30.up.railway.app](https://private-api-production-0d30.up.railway.app) —
+the [Dockerfile](./Dockerfile) compiles `spp` from a pinned commit on Railway's amd64 builders and
+the entrypoint re-derives both identities' privacy keys on every boot (they are deterministic in
+the Stellar secret, so the payment address survives restarts). Trigger a full cycle from the
+[dashboard](https://dashboard-production-5c18.up.railway.app/dashboard)'s **shielded ◆** target, or
+`POST /demo/run` directly.
+
+To run it locally instead:
 
 ```sh
 cp .env.example .env      # fill in the paths to spp, the deployment file, and the circuits
