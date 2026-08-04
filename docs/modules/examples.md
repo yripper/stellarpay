@@ -18,6 +18,10 @@ the spec's deliberate no-owned-logic example (spec §9) — its only logic beyon
 already-tested `reportReceipt.ts` is a single guarded Horizon `/fee_stats` mapping. Its one
 route settles over **mpp-charge**, so across the three paid services both payment schemes
 (x402 and mpp-charge) show up more than once.
+`examples/mcp-server` is the fifth and the only one that does not sell HTTP routes at all: a
+"Stellar Intel MCP" server on `@stellarpay/mcp` whose **individual MCP tools** are priced, so
+an AI agent's `tools/call` is what triggers the on-chain micropayment. One tool
+(`network_status`) is free and three are paid, on one server, over one connection.
 
 ## Structure
 
@@ -97,6 +101,30 @@ route settles over **mpp-charge**, so across the three paid services both paymen
 - No `test/` directory — spec-sanctioned (spec §9 names fastify-api the no-owned-logic
   example); the copied `reportReceipt.ts` is already covered by Task 4's tests, and `fees.ts`'s
   one fetcher has no automated test despite being injectable.
+- `examples/mcp-server/src/env.ts` — `Env` type + `readEnv()`, copied per-service from
+  `examples/express-api/src/env.ts` with `required` = `["DEMO_PAYTO", "DEMO_MPP_SECRET"]`
+  (`env.ts:19`, every priced tool settles over MPP and needs the HMAC secret) and the port
+  default `4604` (`env.ts:30`). `Env` shape is identical to fastify-api's — no
+  `facilitatorKey`/`sponsorSecret`, since `toolPayments` has no x402 leg and this service does
+  not sponsor gas (`env.ts:9-15`).
+- `examples/mcp-server/src/reportReceipt.ts` — byte-for-byte copy of
+  `examples/express-api/src/reportReceipt.ts`; see that entry above.
+- `examples/mcp-server/src/intel.ts` — the four Horizon-testnet fetchers backing the four
+  tools: `networkStatus` (`intel.ts:22`), `accountSummary` (`intel.ts:34`), `assetStats`
+  (`intel.ts:63`), `whaleWatch` (`intel.ts:96`), plus the private `assetSupply`/`assetHolders`
+  Horizon-2.x adapters (`intel.ts:53,58`) and the pure `extractWhales` sort/cap
+  (`intel.ts:111`). Each network fetcher takes an injected `fetch` as its last parameter,
+  defaulting to global `fetch`. Kept deliberately separate from the MCP wiring.
+- `examples/mcp-server/src/mcp.ts` — `PRICES` (`mcp.ts:8`), `buildPayments(env, report)`
+  (`mcp.ts:21`) which constructs the one `toolPayments()` instance, `withoutArgs`
+  (`mcp.ts:49`, the schema-less-tool arity adapter — see Gotchas), and
+  `buildMcpServer(payments)` (`mcp.ts:58`) which registers the four tools. No HTTP here.
+- `examples/mcp-server/src/main.ts` — entrypoint and the only HTTP host: `readEnv()`, the
+  reporter, the **module-scope** `buildPayments(...)` (`main.ts:9`), then an Express app with
+  `GET /`, `GET /healthz`, and `POST /mcp` (`main.ts:37-58`).
+- No `test/` directory and no `test` script — the payment guard is covered by
+  `packages/mcp`'s own suite and the copied `reportReceipt.ts` by Task 4's; what is left here
+  is Horizon mappings plus SDK wiring. Same posture as `examples/fastify-api`.
 
 ## Endpoints / Public Surface
 
@@ -165,6 +193,31 @@ other non-OK Horizon response (`intel.ts:15-20`).
   (`fees.ts:8`); an unreachable Horizon (thrown `fetch` rejection) is instead caught by
   Fastify's own promise handling and answered `500` — see the Gotchas entry below.
 
+`examples/mcp-server`'s surface is an **MCP tool list**, not an HTTP route table. Prices come
+from the `PRICES` constant (`examples/mcp-server/src/mcp.ts:8`) and are the single source of
+truth for both the guard and every human-readable description.
+
+- `POST /mcp` (`main.ts:37-58`) — the MCP Streamable HTTP endpoint, **stateless**
+  (`sessionIdGenerator: undefined`), no session header required. Four tools
+  (`mcp.ts:61-86`):
+  - `network_status` — **free**. Horizon root + `/fee_stats`: `network`, `horizonVersion`,
+    `latestLedger`, `ledgerCapacityUsage`, `source` (`intel.ts:22-31`). Registered with no
+    price, so `toolPayments`' guard is never applied to it — the handler is invoked directly
+    (`mcp.ts:61-65`).
+  - `account_summary` — **$0.01**. Input `{ account: string }`. `/accounts/{id}`:
+    `balances`, `subentries`, `flags` (`intel.ts:34-44`).
+  - `asset_stats` — **$0.01**. Input `{ code: string, issuer: string }`. `/assets`:
+    `supply`, `holders`, `flags` (`intel.ts:63-77`).
+  - `whale_watch` — **$0.02**. No input. `/payments`: `{ window, count, largestXlm, whales,
+    source }`, the 10 largest native payments in the 200-op window (`intel.ts:96-108`).
+  An unpaid priced tool call answers a JSON-RPC **error** with `code: -32042` and a
+  `data.challenges` array (not an `isError` tool result — see the Gotchas entry on the error
+  code collision). A Horizon failure inside any tool becomes an `isError: true` tool result,
+  never a crash.
+- `GET /` — free. JSON index: name, the `POST /mcp` endpoint, and the tool→price map
+  (`main.ts:14-21`).
+- `GET /healthz` — free. `200 { ok: true }` (`main.ts:22-24`).
+
 TS surface consumed by later tasks:
 
 - `buildApp(deps: Deps): Hono` (`examples/dashboard/src/server.ts:18`) — `Deps` = `{
@@ -201,6 +254,17 @@ TS surface consumed by later tasks:
   `Env` = `{ payTo: string; mppSecret: string; dashboardUrl?: string; ingestSecret?: string;
   port: number }` (`examples/fastify-api/src/env.ts:9-15`). `async` because it `await`s
   `app.register(stellarpayFastify, { config })` before returning.
+- `PRICES` (`examples/mcp-server/src/mcp.ts:8`) — `{ account_summary: "$0.01", asset_stats:
+  "$0.01", whale_watch: "$0.02" }`, `as const`. `network_status` is deliberately absent —
+  that absence is what makes it free.
+- `buildPayments(env: Env, report: (e: IngestEvent) => void): ToolPayments`
+  (`examples/mcp-server/src/mcp.ts:21`) — the one `toolPayments()` call. **Call it once per
+  process.**
+- `buildMcpServer(payments: ReturnType<typeof buildPayments>): McpServer`
+  (`examples/mcp-server/src/mcp.ts:58`) — call it per request.
+- `networkStatus(f?)` / `accountSummary(account, f?)` / `assetStats(code, issuer, f?)` /
+  `whaleWatch(f?)` (`examples/mcp-server/src/intel.ts:22,34,63,96`) — all
+  `Promise<Record<string, unknown>>`; `f` defaults to global `fetch`.
 
 ## Key Methods (`file:line`)
 
@@ -310,6 +374,39 @@ TS surface consumed by later tasks:
   is called and awaited **before** any route registration (`server.ts:20`) — `stellarpayFastify`
   is a `skip-override` plugin, so its `onRequest` hook gates the whole app rather than being
   scoped to a child encapsulation context (`packages/fastify/src/index.ts:38-51,75`).
+- `buildPayments(env, report)` (`examples/mcp-server/src/mcp.ts:21-36`) — one
+  `toolPayments({ payTo, network: "stellar:testnet", mppSecretKey, prices: PRICES, onPayment })`
+  call. `onPayment` adapts `ToolPaymentReceipt` (`{ tool, amount, raw?, timestamp }`,
+  `packages/mcp/src/server.ts:30-39`) into the dashboard's loose receipt shape by mapping
+  `tool → route` and hardcoding `scheme: "mpp-charge"` / `asset: "USDC"` — both are true by
+  construction, not guesses: `toolPayments` only ever settles `stellar.charge` in
+  `USDC_SAC_TESTNET` (`packages/mcp/src/server.ts:93-101`). `raw` is spread in conditionally
+  because the guard never populates it today (`packages/mcp/src/server.ts:124`).
+- `withoutArgs(guarded)` (`examples/mcp-server/src/mcp.ts:49-51`) — converts a guarded
+  `(args, extra)` handler into the one-argument `(extra)` callback the MCP SDK invokes for
+  tools registered without an `inputSchema`. Load-bearing; see the Gotchas entry.
+- `buildMcpServer(payments)` (`examples/mcp-server/src/mcp.ts:58-88`) — constructs a fresh
+  `McpServer({ name: "stellar-intel", version: "0.1.0" })` and registers the four tools.
+  `network_status` is registered with its raw handler (`mcp.ts:64`); the three priced tools go
+  through `payments.guard(<tool name>, …)` with the **same string** used as the `PRICES` key
+  and the `registerTool` name (`mcp.ts:72,80,85`) — a typo in any one of the three silently
+  makes the tool free (`packages/mcp/src/server.ts:114`).
+- `assetSupply(rec)` / `assetHolders(rec)` (`examples/mcp-server/src/intel.ts:53-60`) — the
+  same pre-2.x → Horizon-2.x fallback as `examples/express-api/src/intel.ts:33-40`, for the
+  same reason (see the shared `/assets` gotcha below).
+- `whaleWatch(f)` / `extractWhales(records, limit)`
+  (`examples/mcp-server/src/intel.ts:96-108,111-126`) — mirrors
+  `examples/hono-api/src/whales.ts:14-58` including the **absence** of a size floor; the
+  window (200) and cap (10) are module constants (`intel.ts:82-84`), not `Env` fields.
+- `POST /mcp` handler (`examples/mcp-server/src/main.ts:37-58`) — registered as a
+  **synchronous** handler that immediately enters `void (async () => { … })()` with its own
+  `try/catch`, never as a bare `async` handler (see the Express-4 gotcha, which applies here
+  exactly as it does to express-api). Per request it builds a fresh `buildMcpServer(payments)`
+  + `StreamableHTTPServerTransport({ sessionIdGenerator: undefined })`, registers a
+  `res.on("close")` teardown that closes both with `.catch(() => undefined)` attached (a bare
+  `void close()` would leave a rejected teardown promise unhandled, and it fires outside the
+  `try/catch`), then `await server.connect(transport)` and
+  `await transport.handleRequest(req, res, req.body)`.
 
 ## Dependencies
 
@@ -360,6 +457,27 @@ TS surface consumed by later tasks:
 - No HTTP client dependency: Horizon is reached through the platform's global `fetch`
   (`fetchFeeStats`'s injectable `f` param), the dashboard through `reportReceipt.ts`'s
   `doFetch`, same pattern as every other example service.
+
+`examples/mcp-server` (`examples/mcp-server/package.json:11-21`):
+
+- `@modelcontextprotocol/sdk` (^1.30.0, resolved `1.30.0`) — a **direct runtime dependency
+  here, not just a type dependency**: `main.ts` imports `StreamableHTTPServerTransport` and
+  `mcp.ts` imports `McpServer`, and `@stellarpay/mcp` declares the SDK only as a
+  `peerDependency` (`packages/mcp/package.json`), so the consuming app must supply it. Omitting
+  it would not be a compile error — it would make every priced tool's 402 path throw mppx's
+  "Missing optional dependency" at runtime (`docs/modules/mcp.md`'s peer-dependency gotcha).
+- `@stellarpay/mcp` (`workspace:*`) — `toolPayments(config)` (`packages/mcp/src/server.ts:88`).
+  The client-side exports (`wrapPaidMcpClient`, `payingHttpTransport`,
+  `packages/mcp/src/client.ts:36,55`) are used by this service's README example and by the
+  buying agent, not by the server itself.
+- `express` (^4, resolved `4.22.2`) — the HTTP host. Only `express.json()` and three routes;
+  no stellarpay Express adapter is involved, because the paywall here lives at the MCP
+  JSON-RPC layer, not the HTTP layer.
+- `zod` (^4, resolved `4.4.3`) — tool input schemas. The MCP SDK accepts `^3.25 || ^4.0`
+  (`@modelcontextprotocol/sdk/package.json` peer), and `registerTool`'s `inputSchema` takes a
+  raw shape object (`{ account: z.string() }`), not a wrapped `z.object({...})`.
+- `tsx` (^4.19.0) — runtime dependency, same no-build-step rationale as the other examples.
+- No `@stellarpay/core` dependency: this service never builds a `StellarpayConfig`.
 
 ## Gotchas & Invariants
 
@@ -549,6 +667,80 @@ TS surface consumed by later tasks:
   minimal `Env` shape, matching hono-api's precedent of dropping fields a service's single
   scheme doesn't use.
 
+`examples/mcp-server`:
+
+- **`toolPayments()` must be instantiated exactly once per process. This is the invariant that
+  breaks the service if you get it wrong.** `main.ts:9` calls `buildPayments(env, report)` at
+  module scope, deliberately outside the `/mcp` handler. Its replay-protection store is
+  `Store.memory()` (`packages/mcp/src/server.ts:104`), a plain in-process map: moving the call
+  into the handler gives every HTTP request an empty store, which silently disables replay
+  protection entirely. Only the `McpServer` and `StreamableHTTPServerTransport` are per-request
+  — that is what stateless streamable HTTP means, and it does **not** extend to the payment
+  engine. Verified live 2026-08-04: a byte-identical credential-bearing JSON-RPC body,
+  captured from a successful paid `asset_stats` call and replayed as a *separate* HTTP request
+  moments later, came back `-32042 "Payment verification failed."` with a freshly issued
+  challenge. Per-request instantiation could not produce that rejection — the second request's
+  store would have had no memory of the spent challenge.
+- **A priced tool registered without an `inputSchema` must go through `withoutArgs`
+  (`mcp.ts:49-51`), or it is permanently unpayable.** The SDK's `executeToolHandler` calls
+  `handler(args, extra)` when `tool.inputSchema` is set and `handler(extra)` when it is not
+  (`@modelcontextprotocol/sdk/dist/esm/server/mcp.js:229-236`). `toolPayments`' `guard` always
+  returns a two-parameter `(args, extra)` function (`packages/mcp/src/server.ts:116`), so
+  registering it raw on a schema-less tool hands `extra` to the `args` slot and `undefined` to
+  the `extra` slot; mppx then reads the credential off `undefined`
+  (`packages/mcp/src/server.ts:121`), finds none, and issues a fresh 402 no matter how
+  correctly the caller pays. `whale_watch` is the only such tool today (`mcp.ts:85`). This
+  surfaced as a `tsc` error ("Target signature provides too few arguments"), which is the one
+  cheap way to catch it — do not silence it with a cast.
+- **`-32042` is *also* `ErrorCode.UrlElicitationRequired` in the MCP SDK, and that collision is
+  the only reason the payment challenge reaches the client as a JSON-RPC error at all.**
+  `McpServer`'s `tools/call` handler catches everything a tool handler throws and converts it
+  into an `isError: true` `CallToolResult` — **except** an `McpError` whose code is
+  `ErrorCode.UrlElicitationRequired` (`mcp.js:134-141`), and
+  `ErrorCode.UrlElicitationRequired = -32042` (`types.js:170`), the same value as mppx's
+  `paymentRequiredCode` (`mppx/dist/Mcp.js:2`). If the SDK ever renumbers that code, every
+  unpaid priced tool call here starts returning a *successful* JSON-RPC response carrying an
+  `isError` result, `McpClient.wrap`'s `isPaymentRequiredError` check stops matching
+  (`mppx/dist/mcp-sdk/client/McpClient.js`, which requires a thrown `error.code === -32042`
+  with `data.challenges`), and paying clients silently stop paying instead of failing loudly.
+  Verified 2026-08-04 by an isolated probe (`McpServer` + `InMemoryTransport`, tool throwing
+  `new McpError(-32042, …)`) and end-to-end over HTTP. The companion half also holds:
+  `McpError.fromError` only downgrades a `-32042` into a `UrlElicitationRequiredError` when
+  `data.elicitations` is present (`types.js:2039-2048`) — mppx's data carries `challenges`, so
+  the error stays a plain `McpError` with its challenge payload intact.
+- **`network_status` is free because it is absent from `PRICES`, not because of a flag.**
+  `guard` returns the handler unwrapped for an unpriced tool (`packages/mcp/src/server.ts:114`),
+  and `mcp.ts:64` doesn't call `guard` at all. Conversely, the tool name string appears three
+  times per paid tool — as the `PRICES` key, the `registerTool` name, and the `guard` argument
+  (`mcp.ts:8,66-72,74-80,82-85`). A mismatch in the `guard` argument makes the tool **free**,
+  silently and with no error anywhere; it is not a typo TypeScript can catch.
+- **Never register a bare `async` route handler on this Express app** — identical Express-4
+  finding to `examples/express-api` (see that gotcha), and it applies with more force here:
+  `transport.handleRequest` and everything the MCP layer awaits can reject. `main.ts:37-58`
+  therefore uses the same synchronous-handler + inner-async-IIFE + `try/catch` shape, and the
+  `res.on("close")` teardown attaches `.catch(() => undefined)` to both `close()` calls since
+  that callback fires outside the `try`. Verified 2026-08-04 with a throwaway harness (not
+  committed) that wires the real `buildMcpServer`/`buildPayments` into an identical Express app
+  with a global `fetch` that throws for every Horizon URL, plus a `process.on("unhandledRejection")`
+  tripwire: a `network_status` call returned `200` with `{"isError":true,"content":[{"text":"fetch
+  failed"}]}`, `/healthz` still answered `200`, and the tripwire never fired.
+- **A Horizon outage inside a *paid* tool still charges the caller.** `guard` settles the
+  payment *before* invoking the wrapped handler (`packages/mcp/src/server.ts:121-133`), so a
+  Horizon failure after settlement yields a paid-for `isError` result. That ordering lives in
+  `packages/mcp`, not here; this service cannot fix it without pre-fetching, which would defeat
+  the paywall. Worth knowing before a live demo.
+- **`POST /mcp` with a body that isn't valid JSON returns Express's default HTML 400**, not a
+  JSON-RPC parse error — `express.json()` throws before the handler runs, so Express's default
+  error handler answers. Every *other* malformed input is answered properly by the transport
+  (missing `accept` header → `406`; valid JSON that isn't JSON-RPC → `400 {"code":-32700}`;
+  unknown method → `-32601`; unknown tool or bad arguments → an `isError` result). All verified
+  live 2026-08-04, with `/healthz` still `200` afterward.
+- **Stateless mode means no `GET /mcp` and no session header.** `sessionIdGenerator: undefined`
+  (`main.ts:39`), and only `POST /mcp` is registered — a client that expects to open a
+  standalone SSE stream over `GET /mcp` gets Express's `404`.
+- **`reportReceipt.ts` and `env.ts` are duplicated here too, on purpose** — same rule as the
+  other example services (see express-api's gotcha).
+
 ## Testing
 
 - `examples/dashboard/test/buffer.test.ts` — seq assignment/monotonicity and
@@ -625,6 +817,25 @@ TS surface consumed by later tasks:
   `/events` stream to confirm the receipt arrived. The Fastify-async-rejection resilience claim
   above is additionally checked via a throwaway `app.inject()` harness (not committed) wiring
   the real `fetchFeeStats` export into a bare Fastify route with a throwing `fetch`.
+- `examples/mcp-server` ships **no `test/` directory and no `test` script**, same posture and
+  rationale as fastify-api: the payment guard is covered by `packages/mcp`'s own suite
+  (`docs/modules/mcp.md`'s Testing section), `reportReceipt.ts` by Task 4's tests, and what
+  remains is Horizon mappings plus SDK wiring. The one piece of genuinely owned logic with a
+  non-obvious failure mode — `withoutArgs` (`mcp.ts:49-51`) — is guarded by `tsc` rather than a
+  test: removing it reintroduces the compile error that caught it. The root `pnpm test` suite is
+  unaffected either way (see the root-suite caveat above).
+- Typecheck: `pnpm --filter @stellarpay-examples/mcp-server typecheck` (or `pnpm typecheck`
+  from repo root).
+- Live verification of `examples/mcp-server` is not covered by any automated test — same
+  testnet-funds requirement as the other paid examples. Manual procedure: run the dashboard on
+  `:4600` and this service on `:4604` with `DASHBOARD_URL`/`INGEST_SECRET` pointing at it; curl
+  `/` and `/healthz`; drive `tools/list` and a free `tools/call network_status` over raw curl
+  (`content-type: application/json` **and** `accept: application/json, text/event-stream` are
+  both required, and responses come back SSE-framed as `event: message\ndata: {…}` even for a
+  single JSON-RPC reply); call a priced tool bare to see the `-32042` challenge; then drive the
+  paid calls through `wrapPaidMcpClient(client, { secret, network: "stellar:testnet", rpcUrl })`
+  over `payingHttpTransport("http://localhost:4604/mcp", fetch)` from `@stellarpay/mcp` and read
+  the dashboard's `/events` stream to confirm the receipts arrived.
 
 ## Verified Against
 
@@ -632,19 +843,22 @@ TS surface consumed by later tasks:
   (`examples/dashboard/src/{buffer,cooldown,ingest,server,main}.ts`,
   `examples/express-api/src/{env,reportReceipt,intel,server,main}.ts`,
   `examples/hono-api/src/{env,reportReceipt,whales,server,main}.ts`,
-  `examples/fastify-api/src/{env,reportReceipt,fees,server,main}.ts`), plus the cross-package
+  `examples/fastify-api/src/{env,reportReceipt,fees,server,main}.ts`,
+  `examples/mcp-server/src/{env,reportReceipt,intel,mcp,main}.ts`), plus the cross-package
   citations into `packages/core/src/{config,router,stellarpay,types}.ts`,
   `packages/core/src/schemes/{mppCharge,x402}.ts`, `packages/express/src/index.ts`,
-  `packages/hono/src/index.ts`, and `packages/fastify/src/index.ts`.
+  `packages/hono/src/index.ts`, `packages/fastify/src/index.ts`, and
+  `packages/mcp/src/{server,client}.ts`.
 - `hono` resolved at `4.12.33`, `@hono/node-server` at `2.0.12`, `express` at `4.22.2`,
-  `fastify` at `4.29.1` in `node_modules` — all match the versions this doc's line citations
+  `fastify` at `4.29.1`, `@modelcontextprotocol/sdk` at `1.30.0`, `zod` at `4.4.3`, and
+  `mppx` at `0.6.31` in `node_modules` — all match the versions this doc's line citations
   were checked against.
 - All 21 dashboard tests pass (`buffer`: 3, `cooldown`: 1, `ingest`: 9, `server`: 8), all
   9 express-api tests pass (`reportReceipt`: 3, `intel`: 6), and both hono-api tests pass
-  (`whales`: 2); `examples/fastify-api` ships no tests, by design (see Testing above). The
-  repo-root `pnpm typecheck` (`pnpm -r typecheck`, every package plus all four examples; the
-  root itself declares no `typecheck` script) succeeds; the root `pnpm test` suite
-  (`packages/*`, 88 tests) is unaffected — `examples/*` tests run only via their own
+  (`whales`: 2); `examples/fastify-api` and `examples/mcp-server` ship no tests, by design (see
+  Testing above). The repo-root `pnpm typecheck` (`pnpm -r typecheck`, every package plus all
+  five examples; the root itself declares no `typecheck` script) succeeds; the root `pnpm test`
+  suite (`packages/*`, 88 tests) is unaffected — `examples/*` tests run only via their own
   per-package filter, never the root suite.
 - Horizon response shapes for `/assets`, `/order_book`, `/accounts`, and
   `/accounts/{id}/payments` re-confirmed 2026-08-04 by curling live
@@ -653,7 +867,15 @@ TS surface consumed by later tasks:
   native-payment records match `whales.ts`'s field assumptions exactly (no gotcha there).
   `/fee_stats` re-confirmed the same day too: live `last_ledger`/`ledger_capacity_usage`/
   `fee_charged`/`max_fee` match `fees.ts`'s field assumptions exactly (no gotcha there either —
-  see the fastify-api gotcha above for the full field list).
+  see the fastify-api gotcha above for the full field list). Horizon's **root document** `/`
+  checked for the first time the same day for `examples/mcp-server`'s `networkStatus`: live
+  `horizon_version` (`"27.0.0-338710d6…"`) and `history_latest_ledger` (a number) are both
+  present and correctly named. All four endpoints `examples/mcp-server` reads — `/`,
+  `/fee_stats`, `/accounts/{id}` (`balances`, `subentry_count`, `flags`), `/assets`
+  (`balances.authorized`, `accounts.authorized`, `flags` — **not** `amount`/`num_accounts`),
+  and `/payments` (`type`, `asset_type`, `amount`, `from`, `to`, `created_at`,
+  `transaction_hash`) — were curled individually before the code was written, not assumed from
+  one another.
 - `examples/express-api` verified live end-to-end 2026-08-04 on Stellar testnet: free routes
   returned real Horizon data, both paid routes issued genuine `402`s (x402 →
   `payment-required` header; mpp-charge → `WWW-Authenticate: Payment … intent="charge"`,
@@ -691,3 +913,23 @@ TS surface consumed by later tasks:
   Error","message":"fetch failed"}`, and a follow-up `/healthz` request on the same instance
   still returned `200` — the process and the server both survived, same conclusion as Hono's
   finding above, in contrast to `examples/express-api`'s Express-4 finding.
+- `examples/mcp-server` verified live end-to-end 2026-08-04 on Stellar testnet against a
+  dashboard running on `:4600`. `GET /` and `GET /healthz` returned the expected JSON.
+  `tools/list` over raw curl returned all four tools with their descriptions and input schemas
+  (`network_status` and `whale_watch` with no properties; `account_summary` requiring
+  `account`; `asset_stats` requiring `code` and `issuer`). Free `tools/call network_status`
+  returned live Horizon data with no payment (`horizonVersion: "27.0.0-338710d6…"`,
+  `latestLedger: 3966232`, `ledgerCapacityUsage: "0.09"`). Unpaid `tools/call` on
+  `account_summary` and on `whale_watch` both returned a genuine JSON-RPC
+  `error.code: -32042` with one challenge quoting `100000` base units (`$0.01`) and the testnet
+  USDC SAC as `currency`. **Four real paid tool calls then settled on-chain** through
+  `wrapPaidMcpClient` over `payingHttpTransport`, each returning a settlement receipt with a
+  real transaction reference: `asset_stats` → `supply: "99950.0000000", holders: 2` for live
+  testnet USDC; `account_summary` → a real `balances` array and `subentries: 0`;
+  `whale_watch` → `count: 10, largestXlm: "2.0000000"` with real `from`/`to`/`tx` values; plus
+  a second `asset_stats` for the replay test. All three distinct tools' receipts arrived on the
+  dashboard's `/events` feed with the right `route` (the tool name) and `amount`
+  (`"0.01"`/`"0.01"`/`"0.02"`) — the `payer`/`txHash` columns render `—`, expected for MPP.
+  Four consecutive paid calls on one un-restarted process all behaved correctly, and the
+  credential-replay rejection described in the once-per-process gotcha above was captured in
+  the same session.
