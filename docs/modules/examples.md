@@ -8,6 +8,8 @@ package — `"private": true`, no build step (`tsx` runs `src/main.ts` directly)
 `vitest.config.ts` so `pnpm --filter` works per-package. `examples/dashboard` is the first
 and the hub: four paid API services (later tasks) POST payment receipts to its `/ingest`
 endpoint, and it fans them out to browsers over Server-Sent Events (SSE).
+`examples/express-api` is the second and the flagship seller: a "Stellar Intel" API that
+sells live Horizon-testnet data behind two paywalled routes, one per payment scheme.
 
 ## Structure
 
@@ -32,6 +34,20 @@ endpoint, and it fans them out to browsers over Server-Sent Events (SSE).
 - `examples/dashboard/test/{buffer,cooldown,ingest,server}.test.ts` — unit tests for the
   three pure modules plus HTTP-level tests against `buildApp()` via Hono's `app.request()`
   (no socket).
+- `examples/express-api/src/env.ts` — `Env` type + `readEnv()`, the `.env` loader and
+  required-var guard. Loads at import time; exits 1 naming (never echoing) missing vars.
+- `examples/express-api/src/reportReceipt.ts` — `IngestEvent` type + `createReceiptReporter()`,
+  the fire-and-forget dashboard `/ingest` client. **Copied verbatim into each paid example
+  service** (only the `service` value at the call site differs) — examples are private, so a
+  shared package for ~20 lines would be YAGNI.
+- `examples/express-api/src/intel.ts` — `IntelResult` type + the three Horizon-testnet
+  fetchers (`fetchAssetSummary`, `fetchAssetReport`, `fetchAccountDeepDive`). Each takes an
+  injected `fetch` as its last parameter, defaulting to global `fetch`, so tests run offline.
+- `examples/express-api/src/server.ts` — `buildApp(env): Express`, the pure app factory that
+  builds the `StellarpayConfig`, mounts the paywall, and registers the five routes.
+- `examples/express-api/src/main.ts` — entrypoint: `readEnv()` then `buildApp(env).listen()`.
+- `examples/express-api/test/{reportReceipt,intel}.test.ts` — unit tests for the reporter's
+  wire format and failure-swallowing, and for the three fetchers via an injected `fetch`.
 
 ## Endpoints / Public Surface
 
@@ -56,6 +72,25 @@ endpoint, and it fans them out to browsers over Server-Sent Events (SSE).
   5s timeout — an unreachable or failing agent never turns the `202` into an error
   (`server.ts:75-89`).
 
+`examples/express-api`'s HTTP surface (`examples/express-api/src/server.ts:44-61`). Prices
+come from the `PRICES` constant (`server.ts:8`), both `"$0.02"`:
+
+- `GET /` — free. JSON service index: name, network, and every route with its price, scheme,
+  and one-line description (`server.ts:44-55`). The first thing a judge curls.
+- `GET /healthz` — free. `200 { ok: true }` (`server.ts:56-58`).
+- `GET /summary/:code/:issuer` — free. Asset teaser from Horizon `/assets`: `code`, `issuer`,
+  `supply`, `holders`, `flags`, `source` (`server.ts:59`).
+- `GET /report/:code/:issuer` — **$0.02, x402**. Everything `/summary` returns plus a
+  `market` block with the top of the asset's XLM order book (`server.ts:60`). Paywall key:
+  `"GET /report/*"` (`server.ts:26`).
+- `GET /deep-dive/:account` — **$0.02, mpp-charge**, gas-sponsored when `DEMO_SPONSOR_SECRET`
+  is set. Account `balances`, `subentries`, `flags`, and `recentPayments` (10 most recent)
+  (`server.ts:61`). Paywall key: `"GET /deep-dive/*"` (`server.ts:27-32`).
+
+Horizon failures map through both paid and free intel routes identically: `404` for an
+unknown account or an empty asset record set, `502 {"error":"horizon_unavailable"}` for any
+other non-OK Horizon response (`intel.ts:15-20`).
+
 TS surface consumed by later tasks:
 
 - `buildApp(deps: Deps): Hono` (`examples/dashboard/src/server.ts:18`) — `Deps` = `{
@@ -64,6 +99,18 @@ TS surface consumed by later tasks:
 - `FeedEvent` (`examples/dashboard/src/buffer.ts:2-11`) — `{ seq: number; at: string;
   service: string; kind: "receipt" | "agent-log"; receipt?: Record<string, unknown>;
   message?: string }`.
+- `createReceiptReporter(opts)` (`examples/express-api/src/reportReceipt.ts:9-29`) — `opts` =
+  `{ service: string; dashboardUrl: string | undefined; ingestSecret: string | undefined;
+  fetchImpl?: typeof fetch; timeoutMs?: number }`, returns `(event: IngestEvent) => void`.
+  `IngestEvent` = `{ kind: "receipt"; receipt: Record<string, unknown> } | { kind:
+  "agent-log"; message: string }` (`reportReceipt.ts:7`). **Tasks 5–7 copy this file
+  verbatim** into `examples/{hono-api,fastify-api,mcp-server}/src/reportReceipt.ts`.
+- `readEnv(): Env` (`examples/express-api/src/env.ts:20-35`) — `Env` = `{ payTo: string;
+  mppSecret: string; facilitatorKey?: string; sponsorSecret?: string; dashboardUrl?: string;
+  ingestSecret?: string; port: number }` (`env.ts:9-17`). Also copied per service.
+- `buildApp(env: Env): Express` (`examples/express-api/src/server.ts:10`).
+- `IntelResult` (`examples/express-api/src/intel.ts:8`) — `{ status: number; body:
+  Record<string, unknown> }`, returned by all three fetchers.
 
 ## Key Methods (`file:line`)
 
@@ -94,6 +141,41 @@ TS surface consumed by later tasks:
   `scripts/smoke.ts:39-44`), exits 1 if `INGEST_SECRET` is unset (`main.ts:14-17`), reads
   `public/index.html` relative to the module URL (`main.ts:19`), and binds via
   `@hono/node-server`'s `serve({ fetch: app.fetch, port })` (`main.ts:23-25`).
+- `createReceiptReporter(opts)` (`examples/express-api/src/reportReceipt.ts:9-29`) — returns
+  a `void`-returning closure. Returns early without calling `fetch` when either
+  `dashboardUrl` or `ingestSecret` is falsy (`reportReceipt.ts:20`), otherwise POSTs
+  `{ service, ...event }` to `${dashboardUrl}/ingest` with `authorization: Bearer
+  <ingestSecret>` and an `AbortSignal.timeout` (default 3000ms) (`reportReceipt.ts:21-27`).
+  The promise is `void`-discarded and terminated with a two-arm `.then(noop, noop)`, so
+  neither a rejected fetch nor a non-2xx response can surface as an unhandled rejection.
+- `readEnv()` (`examples/express-api/src/env.ts:20-35`) — filters `["DEMO_PAYTO",
+  "DEMO_MPP_SECRET"]` for unset values and, if any are missing, prints only their **names**
+  and `process.exit(1)`s (`env.ts:21-26`). Optional vars use `|| undefined` so an empty
+  string collapses to absent (`env.ts:31-36`). `.env` is loaded at module import time, above
+  the export (`env.ts:1-7`), so the load happens before any consumer reads `process.env`.
+- `horizonJson(url, f)` (`examples/express-api/src/intel.ts:15-20`) — the single point where
+  Horizon status codes are mapped: `404` passes through as `404`, any other non-OK becomes
+  `502`, `200` parses the body through `asRec()`. All three fetchers funnel through it.
+- `assetSupply(rec)` / `assetHolders(rec)` (`examples/express-api/src/intel.ts:33-40`) — read
+  the flat pre-Horizon-2.x `amount`/`num_accounts` fields first, then fall back to the shape
+  live Horizon actually returns today: `balances.authorized` and `accounts.authorized`. See
+  the gotcha below.
+- `fetchAssetReport(code, issuer, f)` (`examples/express-api/src/intel.ts:61-83`) — calls
+  `fetchAssetSummary` first and short-circuits on any non-200 (`intel.ts:62-63`), then
+  derives `credit_alphanum4`/`credit_alphanum12` from the code's length (`intel.ts:64`) and
+  merges the order book's top bid/ask into a `market` block. An order-book fetch that fails
+  degrades to `{ note: "order book unavailable" }` rather than failing the paid request
+  (`intel.ts:77-81`).
+- `fetchAccountDeepDive(account, f)` (`examples/express-api/src/intel.ts:85-109`) — two
+  Horizon calls. Only the `/accounts` call gates the status; a failing `/payments` call
+  degrades to an empty `recentPayments` array (`intel.ts:90-97`).
+- `buildApp(env)` (`examples/express-api/src/server.ts:10-62`) — builds the reporter
+  (`server.ts:11-15`), then the `StellarpayConfig` with `rpcUrl` wired explicitly from
+  `NETWORKS["stellar:testnet"].rpcUrl` (`server.ts:21`) and `facilitatorApiKey`/
+  `sponsorSecret`/`sponsorGas` spread in conditionally so an unset optional var never lands
+  as `undefined` in the config (`server.ts:22-23,31`). `onPayment` forwards every receipt to
+  the reporter (`server.ts:34`). `app.use(stellarpayExpress(config))` is called **before**
+  any route registration (`server.ts:38`).
 
 ## Dependencies
 
@@ -106,6 +188,19 @@ TS surface consumed by later tasks:
   `tsx src/main.ts` directly, no build step.
 - No `@stellarpay/*` package dependency — the dashboard is transport-agnostic and only
   understands the `/ingest` wire contract; it never imports the SDK.
+
+`examples/express-api` (`examples/express-api/package.json:12-23`):
+
+- `express` (^4, resolved `4.22.2`) — a runtime dependency here, and the declared
+  `peerDependency` of `@stellarpay/express` (`packages/express/package.json:31-33`).
+- `@stellarpay/express` (`workspace:*`) — `stellarpayExpress(config)` returns an Express
+  `RequestHandler` (`packages/express/src/index.ts:36`).
+- `@stellarpay/core` (`workspace:*`) — `StellarpayConfig` (`packages/core/src/types.ts:48`),
+  `Receipt` (`types.ts:25`), and the `NETWORKS` presets re-exported from
+  `packages/core/src/index.ts:11`.
+- `tsx` (^4.19.0) — runtime dependency, same no-build-step rationale as the dashboard.
+- No HTTP client dependency: Horizon is reached through the platform's global `fetch`, and
+  the dashboard through the same (both injectable for tests).
 
 ## Gotchas & Invariants
 
@@ -147,6 +242,57 @@ TS surface consumed by later tasks:
   the `mpp`-styled badge class. A future third scheme would silently render as `mpp`-colored
   unless this ternary is revisited.
 
+`examples/express-api`:
+
+- **Paywall route keys are wildcard prefixes; Express routes are `:param` patterns — they
+  are two different syntaxes describing the same paths.** `config.routes` accepts only
+  `"METHOD /exact/path"` or `"METHOD /prefix/*"` (`packages/core/src/config.ts:7`,
+  `packages/core/src/router.ts:14-19`), so `/report/:code/:issuer` must be registered in the
+  paywall as `"GET /report/*"` (`server.ts:26`). Writing `"GET /report/:code/:issuer"` there
+  compiles to an *exact* route that matches literally nothing, silently making the route
+  free. This is not a bug to "fix" — keep the two in sync by hand.
+- **`matchRoute`'s wildcard requires `prefix + "/"`** (`packages/core/src/router.ts:102`), so
+  `"GET /report/*"` covers `/report/USDC/G…` but **not** bare `/report`. A request to
+  `/report` is unpaywalled — and also unrouted by Express, so it 404s. Adding a `GET /report`
+  index later would silently create a free route.
+- **Horizon's own 4xx on malformed input surfaces as `502 horizon_unavailable`, not `400`.**
+  `horizonJson` only special-cases `404` (`intel.ts:17-18`); Horizon answers `400 Bad
+  Request` for a syntactically invalid issuer, which falls into the `!res.ok` → `502` arm.
+  Verified live: `GET /summary/NOPE/GX` → `502`, while a well-formed-but-unknown asset (`GET
+  /summary/ZZQQ/GA22K…`) correctly → `404`. Mildly misleading to a caller; a deliberate
+  simplification, not an oversight.
+- **Live Horizon `/assets` records have no `amount` or `num_accounts` field.** Horizon 2.x
+  reports supply and holder count as `balances.authorized` (a string) and
+  `accounts.authorized` (a number). `assetSupply`/`assetHolders` (`intel.ts:33-40`) read the
+  flat legacy names first and fall back to the nested ones, so both shapes resolve. Reading
+  only the flat names — as an earlier draft did — yields `supply: "—", holders: null` against
+  live Horizon, i.e. a paid route that returns nothing of value. Confirmed 2026-08-04 by
+  curling `https://horizon-testnet.stellar.org/assets?asset_code=USDC`.
+- **The mpp-charge receipt carries no `payer` or `txHash`.** `packages/core/src/schemes/
+  mppCharge.ts:51-54` builds it from the `Payment-Receipt` response header and sets only
+  `scheme`/`route`/`network`/`amount`/`asset`/`raw`/`timestamp`; the payer and transaction
+  hash live inside the opaque `raw` payload. On the dashboard those two columns render `—`
+  for every MPP row while x402 rows show both. Expected, not a wiring bug.
+- **`sponsorGas` and `sponsorSecret` must be set together or not at all.** `parseConfig`
+  rejects a route with `sponsorGas: true` when `sponsorSecret` is absent
+  (`packages/core/src/config.ts:106-111`), which would throw at `buildApp()` time. Both are
+  therefore spread in conditionally off the same `env.sponsorSecret` check
+  (`server.ts:23,31`) — never decouple those two conditions.
+- **Receipt reporting must stay fire-and-forget.** `onPayment` runs inside the paywall's
+  request path; core already wraps it in a `try/catch` (`packages/core/src/stellarpay.ts:96-101`), but the reporter additionally never awaits, never throws, and terminates its
+  promise with a two-arm `.then` (`reportReceipt.ts:21-28`). A refactor that `await`s the
+  POST, or drops the rejection handler, turns a dashboard outage into slow or failing paid
+  requests.
+- **`reportReceipt.ts` and `env.ts` are duplicated across example services on purpose.**
+  Tasks 5–7 copy them verbatim. Changing the interface here means changing it in every copy;
+  do not "DRY" them into a shared package without revisiting that decision (spec §3).
+- **`env.ts` loads `.env` as an import side effect** (`env.ts:1-7`), before `readEnv()` is
+  ever called. Importing this module for its types alone still performs the load.
+- **`buildApp()` is pure but not free.** `stellarpayExpress(config)` calls `stellarpay(config)`
+  eagerly (`packages/express/src/index.ts:37-40`), which runs `parseConfig` and instantiates
+  a scheme module per configured scheme — so an invalid config throws synchronously from
+  `buildApp()`, before `listen()`.
+
 ## Testing
 
 - `examples/dashboard/test/buffer.test.ts` — seq assignment/monotonicity and
@@ -164,20 +310,49 @@ TS surface consumed by later tasks:
   client disconnect would); `/unleash` 503 with no agent configured, 202 + agent `fetch`
   called with the right URL/headers on first call, 429 with the exact `retryAfterSeconds` on
   a call within the cooldown window, and 202 even when the agent `fetch` rejects.
-- Run: `pnpm --filter @stellarpay-examples/dashboard test` (or `pnpm test` from repo root
-  covers `packages/*`; the root `vitest.config.ts` glob is scoped to `packages/**`, so
-  `examples/*` tests run only via their own per-package `vitest.config.ts` — a deliberate
-  choice, see `examples/dashboard/vitest.config.ts`).
-- Typecheck: `pnpm --filter @stellarpay-examples/dashboard typecheck` (or `pnpm typecheck`
+- `examples/express-api/test/reportReceipt.test.ts` — the reporter's wire format (URL,
+  `Bearer` header, `{service, ...event}` body) against an injected `fetch`; the
+  unset-dashboard no-op; and that a rejecting `fetch` neither throws synchronously nor
+  escapes as an unhandled rejection.
+- `examples/express-api/test/intel.test.ts` — the three fetchers via an injected `fetch`,
+  never the network: curated summary fields; the live Horizon 2.x `balances`/`accounts`
+  shape; an empty asset record set → `404`; the report's summary + order-book merge; a
+  Horizon `404` passed through; a Horizon `500` → `502`.
+- Run: `pnpm --filter @stellarpay-examples/dashboard test` and `pnpm --filter
+  @stellarpay-examples/express-api test`. `pnpm test` from repo root covers `packages/*`
+  only — the root `vitest.config.ts` glob is scoped to `packages/**`, so `examples/*` tests
+  run exclusively via their own per-package `vitest.config.ts`. A deliberate choice; adding
+  a new example does **not** extend the root suite, so run its filter explicitly.
+- Typecheck: `pnpm --filter @stellarpay-examples/<name> typecheck` (or `pnpm typecheck`
   from repo root, which runs `pnpm -r typecheck` across every workspace package).
+- Live verification of `examples/express-api` is not covered by any automated test — it
+  needs testnet funds. The manual procedure: run the dashboard on `:4600` and the API on
+  `:4601` with `DASHBOARD_URL`/`INGEST_SECRET` pointing at it, curl the free routes, curl a
+  paid route bare to see the `402`, then drive both paid routes through
+  `createPayingFetch({ secret, network: "stellar:testnet", rpcUrl })` from
+  `@stellarpay/client` (the pattern in `scripts/smoke.ts:283-293`) and read the dashboard's
+  `/events` stream to confirm both receipts arrived.
 
 ## Verified Against
 
 - Source read and line numbers confirmed 2026-08-04 against the current working tree
-  (`examples/dashboard/src/{buffer,cooldown,ingest,server,main}.ts`).
-- `hono` resolved at `4.12.33`, `@hono/node-server` at `2.0.12` in `node_modules` — both
-  match the versions this doc's line citations were checked against.
-- All 21 dashboard tests pass (`buffer`: 3, `cooldown`: 1, `ingest`: 9, `server`: 8);
-  `pnpm --filter @stellarpay-examples/dashboard typecheck` and the repo-root `pnpm
-  typecheck` (`pnpm -r typecheck`, 9 packages incl. `examples/dashboard`) both succeed; the
-  root `pnpm test` suite (`packages/*`, 88 tests) is unaffected.
+  (`examples/dashboard/src/{buffer,cooldown,ingest,server,main}.ts`,
+  `examples/express-api/src/{env,reportReceipt,intel,server,main}.ts`), plus the cross-package
+  citations into `packages/core/src/{config,router,stellarpay,types}.ts`,
+  `packages/core/src/schemes/mppCharge.ts`, and `packages/express/src/index.ts`.
+- `hono` resolved at `4.12.33`, `@hono/node-server` at `2.0.12`, `express` at `4.22.2` in
+  `node_modules` — all match the versions this doc's line citations were checked against.
+- All 21 dashboard tests pass (`buffer`: 3, `cooldown`: 1, `ingest`: 9, `server`: 8) and all
+  9 express-api tests pass (`reportReceipt`: 3, `intel`: 6); the repo-root `pnpm typecheck`
+  (`pnpm -r typecheck`, 9 of 10 workspace projects — every package plus both examples; the
+  root itself declares no `typecheck` script) succeeds; the root `pnpm test` suite
+  (`packages/*`, 88 tests) is unaffected.
+- Horizon response shapes for `/assets`, `/order_book`, `/accounts`, and
+  `/accounts/{id}/payments` re-confirmed 2026-08-04 by curling live
+  `horizon-testnet.stellar.org` — this is where the `balances`/`accounts` vs
+  `amount`/`num_accounts` gotcha above was caught.
+- `examples/express-api` verified live end-to-end 2026-08-04 on Stellar testnet: free routes
+  returned real Horizon data, both paid routes issued genuine `402`s (x402 →
+  `payment-required` header; mpp-charge → `WWW-Authenticate: Payment … intent="charge"`,
+  both quoting `200000` base units = `$0.02` USDC), and both settled to `200` through
+  `createPayingFetch`, with both receipts arriving on the dashboard's `/events` feed.
