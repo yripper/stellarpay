@@ -1,4 +1,5 @@
 import { Mppx, Store, Transport } from "mppx/server";
+import { Mcp } from "mppx";
 import { stellar } from "@stellar/mpp/charge/server";
 import { USDC_SAC_TESTNET } from "@stellar/mpp";
 import { Keypair } from "@stellar/stellar-sdk";
@@ -26,6 +27,32 @@ type McpToolExtra = Transport.InputOf<Transport.McpSdk>;
  */
 type McpToolResult = Transport.ReceiptResponseOf<Transport.McpSdk>;
 
+/** 64-character lowercase hex — the shape of a Stellar transaction hash (a SHA-256 digest). */
+const TX_HASH_PATTERN = /^[0-9a-f]{64}$/;
+
+/**
+ * Extracts a Stellar tx hash from an mppx settlement receipt's `reference` field.
+ *
+ * Deliberately duplicated, not imported, from `@stellarpay/core`'s
+ * `txHashFromReceiptHeader` (`packages/core/src/schemes/mppCharge.ts:28-39`): that helper
+ * base64url-decodes and JSON-parses an HTTP `Payment-Receipt` header first, but the
+ * mcp-sdk transport's receipt (`mppx`'s `Mcp.Receipt`, `mppx/dist/Mcp.d.ts`) is already a
+ * parsed object attached under `_meta[Mcp.receiptMetaKey]` (see `guard` below) — there is
+ * no header or base64url envelope to decode here, so the HTTP helper's signature doesn't
+ * fit. `@stellarpay/core`'s public surface is a single `"."` export
+ * (`packages/core/package.json`'s `exports`), which doesn't re-export the underlying
+ * hash-shape regex on its own, and `@stellarpay/mcp` is a published package that must not
+ * reach past a sibling package's public entry to grab an internal — so the ~3-line check
+ * is copied here rather than coupling the two packages over an unpublished path.
+ *
+ * Applies the identical conservative rule as the HTTP leg: only a genuinely hash-shaped
+ * `reference` yields a value; anything else (`undefined`, non-string, wrong shape) yields
+ * `undefined` — a wrong explorer link on camera during a live demo is worse than no link.
+ */
+function txHashFromReference(reference: unknown): string | undefined {
+  return typeof reference === "string" && TX_HASH_PATTERN.test(reference) ? reference : undefined;
+}
+
 /** A single tool-payment event, reported to {@link ToolPaymentsConfig.onPayment}. */
 export type ToolPaymentReceipt = {
   /** The MCP tool name that was paid for. */
@@ -34,6 +61,16 @@ export type ToolPaymentReceipt = {
   amount: string;
   /** Raw settlement reference (e.g. a transaction hash), when the underlying method exposes one. */
   raw?: string;
+  /**
+   * On-chain settlement transaction hash (64-char lowercase hex), when the settled
+   * receipt's `reference` is genuinely hash-shaped. Populated in `guard` via a throwaway
+   * `withReceipt(...)` probe — mirrors `@stellarpay/core`'s mpp-charge leg
+   * (`packages/core/src/schemes/mppCharge.ts:84-85`) so the dashboard can link every paid
+   * MCP tool call to stellar.expert the same way it already does for HTTP-settled routes.
+   * `undefined` whenever the reference can't be confidently decoded — see
+   * {@link txHashFromReference}.
+   */
+  txHash?: string;
   /** ISO 8601 timestamp of when the charge was accepted. */
   timestamp: string;
 };
@@ -120,8 +157,31 @@ export function toolPayments(config: ToolPaymentsConfig): ToolPayments {
         // the transport's own `getCredential(extra)` (`Transport.js:42-47`).
         const result = await payment.charge({ amount, description: `MCP tool: ${toolName}` })(extra as McpToolExtra);
         if (result.status === 402) throw result.challenge; // McpError, code -32042 (Mcp.d.ts:7)
+        // Probe the settlement receipt with a throwaway `Response`, the same technique
+        // `@stellarpay/core`'s mpp-charge leg uses for the HTTP transport
+        // (`packages/core/src/schemes/mppCharge.ts:77`), adapted to the mcp-sdk transport.
+        // `withReceipt` is a pure function closing over the charge's already-settled
+        // `receiptData` (`mppx/dist/server/Mppx.js:458-485`'s `success()`); it never
+        // mutates its `response` argument or any shared state, so probing here and calling
+        // it again below with the handler's real response neither re-charges nor
+        // re-verifies anything, and can't double-attach the receipt onto the real result —
+        // it's the identical pattern mppx uses on itself (`toNodeListener`,
+        // `mppx/dist/server/Mppx.js:1489`, also probes with a throwaway `Response` before
+        // separately handling the real response). The mcp-sdk transport's own
+        // `respondReceipt` special-cases a `Response` instance to `{ content: [] }` before
+        // merging `_meta[Mcp.receiptMetaKey]` in (`mppx/dist/mcp-sdk/server/
+        // Transport.js:66-81`), so this probe's `{ content: [] }` is discarded here and
+        // never reaches the caller — only the second `withReceipt(response)` call below,
+        // on the handler's actual result, does.
+        const probe = result.withReceipt(new Response(null) as unknown as McpToolResult);
+        const probeMeta = (probe as unknown as { _meta?: Record<string, unknown> })._meta;
+        const settledReceipt = probeMeta?.[Mcp.receiptMetaKey] as { reference?: unknown } | undefined;
+        const txHash = txHashFromReference(settledReceipt?.reference);
         try {
-          config.onPayment?.({ tool: toolName, amount, timestamp: new Date().toISOString() });
+          config.onPayment?.({
+            tool: toolName, amount, timestamp: new Date().toISOString(),
+            ...(txHash ? { txHash } : {}),
+          });
         } catch (hookError) {
           // A misbehaving user hook must never turn an already-paid call into a hard
           // error for the caller — the charge already settled, so the client should

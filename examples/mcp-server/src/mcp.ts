@@ -14,7 +14,7 @@ const text = (value: unknown) => ({ content: [{ type: "text" as const, text: JSO
  * requests. Only McpServer instances are per-request (stateless streamable HTTP).
  *
  * Calling this inside the `/mcp` handler would hand every request a fresh `Store.memory()`
- * (`packages/mcp/src/server.ts:104`), silently disabling replay protection and re-minting the
+ * (`packages/mcp/src/server.ts:141`), silently disabling replay protection and re-minting the
  * HMAC-bound challenge state a client's credential was issued against. `main.ts` calls it at
  * module scope for that reason; do not "simplify" it into the handler.
  */
@@ -28,9 +28,17 @@ export function buildPayments(env: Env, report: (e: IngestEvent) => void) {
       report({
         kind: "receipt",
         // Adapt ToolPaymentReceipt → the dashboard's loose receipt rendering (route/scheme/amount/asset).
-        // `raw` is never populated by the guard today (packages/mcp/src/server.ts:124) — spread
-        // conditionally so the field is absent rather than `undefined` when it stays that way.
-        receipt: { route: r.tool, scheme: "mpp-charge", amount: r.amount, asset: "USDC", timestamp: r.timestamp, ...(r.raw ? { raw: r.raw } : {}) },
+        // `raw` is never populated by the guard (packages/mcp/src/server.ts:181-184 only ever
+        // adds `txHash`, not `raw`) — spread conditionally so the field is absent rather than
+        // `undefined` when it stays unset. `txHash` (packages/mcp/src/server.ts:73) *is*
+        // populated, via the guard's throwaway `withReceipt(...)` probe, whenever the settled
+        // mppx receipt's `reference` is a genuine 64-char lowercase hex Stellar tx hash — spread
+        // in the same conditional way so the dashboard only ever renders a stellar.expert link
+        // it can trust.
+        receipt: {
+          route: r.tool, scheme: "mpp-charge", amount: r.amount, asset: "USDC", timestamp: r.timestamp,
+          ...(r.raw ? { raw: r.raw } : {}), ...(r.txHash ? { txHash: r.txHash } : {}),
+        },
       }),
   });
 }
@@ -43,7 +51,7 @@ export function buildPayments(env: Env, report: (e: IngestEvent) => void) {
  *
  * Load-bearing, not a typing nicety: registering a guarded handler directly on a schema-less
  * priced tool hands `extra` to the guard's `args` slot and `undefined` to its `extra` slot,
- * so mppx's credential lookup (`packages/mcp/src/server.ts:121`) always comes up empty and
+ * so mppx's credential lookup (`packages/mcp/src/server.ts:158`) always comes up empty and
  * the tool answers −32042 forever — a tool nobody can buy, however correctly they pay.
  */
 function withoutArgs<R>(guarded: (args: undefined, extra: unknown) => Promise<R>): (extra: unknown) => Promise<R> {

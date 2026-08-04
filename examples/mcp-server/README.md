@@ -30,7 +30,7 @@ thin window is visible rather than hidden (same product decision as
 
 `network_status` is registered without a price, so `toolPayments`' guard is never applied to
 it at all — the handler runs unwrapped, with zero payment overhead
-(`packages/mcp/src/server.ts:114`). That is the point: a judge, an agent, or a curious
+(`packages/mcp/src/server.ts:151`). That is the point: a judge, an agent, or a curious
 developer can connect, list the tools, and call the free one to confirm the server is alive
 and serving real data **before** spending anything. Paying is a per-tool decision, made at
 call time, not a gate on the connection.

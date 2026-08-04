@@ -495,12 +495,19 @@ TS surface consumed by later tasks:
   scoped to a child encapsulation context (`packages/fastify/src/index.ts:38-51,75`).
 - `buildPayments(env, report)` (`examples/mcp-server/src/mcp.ts:21-36`) — one
   `toolPayments({ payTo, network: "stellar:testnet", mppSecretKey, prices: PRICES, onPayment })`
-  call. `onPayment` adapts `ToolPaymentReceipt` (`{ tool, amount, raw?, timestamp }`,
-  `packages/mcp/src/server.ts:30-39`) into the dashboard's loose receipt shape by mapping
+  call. `onPayment` adapts `ToolPaymentReceipt` (`{ tool, amount, raw?, txHash?, timestamp }`,
+  `packages/mcp/src/server.ts:56-76`) into the dashboard's loose receipt shape by mapping
   `tool → route` and hardcoding `scheme: "mpp-charge"` / `asset: "USDC"` — both are true by
   construction, not guesses: `toolPayments` only ever settles `stellar.charge` in
-  `USDC_SAC_TESTNET` (`packages/mcp/src/server.ts:93-101`). `raw` is spread in conditionally
-  because the guard never populates it today (`packages/mcp/src/server.ts:124`).
+  `USDC_SAC_TESTNET` (`packages/mcp/src/server.ts:130-138`). Both `raw` and `txHash` are
+  spread in conditionally (`mcp.ts:40`): `raw` because the guard never populates it
+  (`packages/mcp/src/server.ts:56-76`'s doc comment), `txHash` because it's only set when
+  the settled reference is genuinely 64-char-lowercase-hex-shaped
+  (`packages/mcp/src/server.ts:176-183`, added 2026-08-04 — see `docs/modules/mcp.md`'s
+  Gotchas for why the probe that extracts it is safe). When `txHash` is present, the
+  dashboard's `field(r, "txHash")` (`examples/dashboard/public/index.html:103`) renders a
+  stellar.expert link for the paid MCP tool call the same way it already does for the
+  HTTP legs' `txHash`.
 - `withoutArgs(guarded)` (`examples/mcp-server/src/mcp.ts:49-51`) — converts a guarded
   `(args, extra)` handler into the one-argument `(extra)` callback the MCP SDK invokes for
   tools registered without an `inputSchema`. Load-bearing; see the Gotchas entry.
@@ -509,7 +516,7 @@ TS surface consumed by later tasks:
   `network_status` is registered with its raw handler (`mcp.ts:64`); the three priced tools go
   through `payments.guard(<tool name>, …)` with the **same string** used as the `PRICES` key
   and the `registerTool` name (`mcp.ts:72,80,85`) — a typo in any one of the three silently
-  makes the tool free (`packages/mcp/src/server.ts:114`).
+  makes the tool free (`packages/mcp/src/server.ts:151`).
 - `assetSupply(rec)` / `assetHolders(rec)` (`examples/mcp-server/src/intel.ts:53-60`) — the
   same pre-2.x → Horizon-2.x fallback as `examples/express-api/src/intel.ts:33-40`, for the
   same reason (see the shared `/assets` gotcha below).
@@ -678,7 +685,7 @@ TS surface consumed by later tasks:
   `peerDependency` (`packages/mcp/package.json`), so the consuming app must supply it. Omitting
   it would not be a compile error — it would make every priced tool's 402 path throw mppx's
   "Missing optional dependency" at runtime (`docs/modules/mcp.md`'s peer-dependency gotcha).
-- `@stellarpay/mcp` (`workspace:*`) — `toolPayments(config)` (`packages/mcp/src/server.ts:88`).
+- `@stellarpay/mcp` (`workspace:*`) — `toolPayments(config)` (`packages/mcp/src/server.ts:125`).
   The client-side exports (`wrapPaidMcpClient`, `payingHttpTransport`,
   `packages/mcp/src/client.ts:36,55`) are used by this service's README example and by the
   buying agent, not by the server itself.
@@ -964,7 +971,7 @@ TS surface consumed by later tasks:
 - **`toolPayments()` must be instantiated exactly once per process. This is the invariant that
   breaks the service if you get it wrong.** `main.ts:9` calls `buildPayments(env, report)` at
   module scope, deliberately outside the `/mcp` handler. Its replay-protection store is
-  `Store.memory()` (`packages/mcp/src/server.ts:104`), a plain in-process map: moving the call
+  `Store.memory()` (`packages/mcp/src/server.ts:141`), a plain in-process map: moving the call
   into the handler gives every HTTP request an empty store, which silently disables replay
   protection entirely. Only the `McpServer` and `StreamableHTTPServerTransport` are per-request
   — that is what stateless streamable HTTP means, and it does **not** extend to the payment
@@ -977,10 +984,10 @@ TS surface consumed by later tasks:
   (`mcp.ts:49-51`), or it is permanently unpayable.** The SDK's `executeToolHandler` calls
   `handler(args, extra)` when `tool.inputSchema` is set and `handler(extra)` when it is not
   (`@modelcontextprotocol/sdk/dist/esm/server/mcp.js:229-236`). `toolPayments`' `guard` always
-  returns a two-parameter `(args, extra)` function (`packages/mcp/src/server.ts:116`), so
+  returns a two-parameter `(args, extra)` function (`packages/mcp/src/server.ts:153`), so
   registering it raw on a schema-less tool hands `extra` to the `args` slot and `undefined` to
   the `extra` slot; mppx then reads the credential off `undefined`
-  (`packages/mcp/src/server.ts:121`), finds none, and issues a fresh 402 no matter how
+  (`packages/mcp/src/server.ts:158`), finds none, and issues a fresh 402 no matter how
   correctly the caller pays. `whale_watch` is the only such tool today (`mcp.ts:85`). This
   surfaced as a `tsc` error ("Target signature provides too few arguments"), which is the one
   cheap way to catch it — do not silence it with a cast.
@@ -1001,7 +1008,7 @@ TS surface consumed by later tasks:
   `data.elicitations` is present (`types.js:2039-2048`) — mppx's data carries `challenges`, so
   the error stays a plain `McpError` with its challenge payload intact.
 - **`network_status` is free because it is absent from `PRICES`, not because of a flag.**
-  `guard` returns the handler unwrapped for an unpriced tool (`packages/mcp/src/server.ts:114`),
+  `guard` returns the handler unwrapped for an unpriced tool (`packages/mcp/src/server.ts:151`),
   and `mcp.ts:64` doesn't call `guard` at all. Conversely, the tool name string appears three
   times per paid tool — as the `PRICES` key, the `registerTool` name, and the `guard` argument
   (`mcp.ts:8,66-72,74-80,82-85`). A mismatch in the `guard` argument makes the tool **free**,
@@ -1017,7 +1024,7 @@ TS surface consumed by later tasks:
   tripwire: a `network_status` call returned `200` with `{"isError":true,"content":[{"text":"fetch
   failed"}]}`, `/healthz` still answered `200`, and the tripwire never fired.
 - **A Horizon outage inside a *paid* tool still charges the caller.** `guard` settles the
-  payment *before* invoking the wrapped handler (`packages/mcp/src/server.ts:121-133`), so a
+  payment *before* invoking the wrapped handler (`packages/mcp/src/server.ts:158-193`), so a
   Horizon failure after settlement yields a paid-for `isError` result. That ordering lives in
   `packages/mcp`, not here; this service cannot fix it without pre-fetching, which would defeat
   the paywall. Worth knowing before a live demo.

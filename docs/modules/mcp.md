@@ -26,18 +26,23 @@ not a new payment protocol.
 - `test/onPaymentIsolation.test.ts` — a post-review addition (see Gotchas) proving a
   throwing `onPayment` hook doesn't turn an already-paid tool call into a hard error;
   stubs the `mppx/server` module boundary to reach the `status: 200` path offline.
+- `test/receiptTxHash.test.ts` — a 2026-08-04 addition (see Gotchas' new `txHash`
+  entry) proving `guard`'s throwaway-`withReceipt`-probe extracts `txHash` onto the
+  `onPayment` receipt only when the settled reference is genuinely hash-shaped, and that
+  the probe never leaks into the tool call's real, caller-visible result.
 
 ## Public Surface
 
-- `type ToolPaymentReceipt` (`server.ts:30-39`) — `{ tool, amount, raw?, timestamp }`,
-  the shape passed to `ToolPaymentsConfig.onPayment`.
-- `type ToolPaymentsConfig` (`server.ts:42-57`) — `payTo`, `network:
+- `type ToolPaymentReceipt` (`server.ts:56-76`) — `{ tool, amount, raw?, txHash?,
+  timestamp }`, the shape passed to `ToolPaymentsConfig.onPayment`. `txHash` was added
+  2026-08-04 — see the Gotchas entry for how/when `guard` populates it.
+- `type ToolPaymentsConfig` (`server.ts:79-94`) — `payTo`, `network:
   "stellar:testnet" | "stellar:pubnet"`, `mppSecretKey`, `sponsorSecret?`, `rpcUrl?`,
   `prices: Record<string, string>` (tool name → `"$0.02"`-style dollar string),
   `onPayment?`.
-- `type ToolPayments` (`server.ts:60-71`) — `guard<A, R>(toolName, handler): (args: A,
+- `type ToolPayments` (`server.ts:97-108`) — `guard<A, R>(toolName, handler): (args: A,
   extra: unknown) => Promise<R>` and `priceOf(toolName): string | undefined`.
-- `function toolPayments(config: ToolPaymentsConfig): ToolPayments` (`server.ts:88-144`)
+- `function toolPayments(config: ToolPaymentsConfig): ToolPayments` (`server.ts:125-204`)
   — the package's server-side entry point.
 - `type PaidMcpClientOptions` (`client.ts:7-23`) — `secret`, `network:
   "stellar:testnet" | "stellar:pubnet"` (see Gotchas — currently unused for wiring),
@@ -50,11 +55,17 @@ not a new payment protocol.
 
 ### Internal (not exported from `index.ts`)
 
-- `type McpToolExtra = Transport.InputOf<Transport.McpSdk>` (`server.ts:17`) — the MCP
+- `type McpToolExtra = Transport.InputOf<Transport.McpSdk>` (`server.ts:18`) — the MCP
   SDK tool-call `extra` shape, derived structurally rather than importing mppx's internal
   `Extra` type by name (see Upstream-API evidence).
-- `type McpToolResult = Transport.ReceiptResponseOf<Transport.McpSdk>` (`server.ts:27`)
+- `type McpToolResult = Transport.ReceiptResponseOf<Transport.McpSdk>` (`server.ts:28`)
   — the `CallToolResult` shape `withReceipt()` expects/returns for this transport.
+- `TX_HASH_PATTERN` (`server.ts:31`) and `txHashFromReference(reference)`
+  (`server.ts:52-54`) — the 64-char-lowercase-hex validator `guard` runs a probed
+  settlement receipt's `reference` through before ever setting `ToolPaymentReceipt.txHash`.
+  Deliberately duplicated (not imported) from `@stellarpay/core`'s
+  `txHashFromReceiptHeader` (`packages/core/src/schemes/mppCharge.ts:28-39`) — see the
+  Gotchas entry for why sharing it wasn't clean.
 
 This mirrors `@stellarpay/client`'s convention (`docs/modules/client.md`'s Public
 Surface section): the package's contract is a small number of top-level functions, not
@@ -62,27 +73,33 @@ their internal type plumbing.
 
 ## Key Methods (`file:line`)
 
-- `toolPayments(config)` (`server.ts:88-144`) — builds one `Mppx.create({ secretKey:
+- `toolPayments(config)` (`server.ts:125-204`) — builds one `Mppx.create({ secretKey:
   config.mppSecretKey, transport: Transport.mcpSdk(), methods: [stellar.charge({...})]
-  })` instance (`server.ts:89-108`) per call, then returns `priceOf` (`server.ts:111`)
-  and `guard` (`server.ts:112-142`).
-- `guard(toolName, handler)` (`server.ts:112-142`):
+  })` instance (`server.ts:126-145`) per call, then returns `priceOf` (`server.ts:148`)
+  and `guard` (`server.ts:149-202`).
+- `guard(toolName, handler)` (`server.ts:149-202`):
   1. Looks up `config.prices[toolName]`; if unset, **returns `handler` unwrapped**
-     (`server.ts:114`) — an unpriced tool never touches mppx at all, not merely "always
+     (`server.ts:151`) — an unpriced tool never touches mppx at all, not merely "always
      succeeds."
   2. Otherwise converts the price via `@stellarpay/core`'s `dollarToDecimal`
-     (`server.ts:115`) and returns an async wrapper that:
+     (`server.ts:152`) and returns an async wrapper that:
      - Calls `payment.charge({ amount, description })(extra as McpToolExtra)`
-       (`server.ts:121`) — the single explicit cast from the guard's public `extra:
+       (`server.ts:158`) — the single explicit cast from the guard's public `extra:
        unknown` boundary into the shape mppx's transport actually reads.
-     - On `result.status === 402`, `throw result.challenge` (`server.ts:122`) — this is
+     - On `result.status === 402`, `throw result.challenge` (`server.ts:159`) — this is
        already a live `McpError` instance (code `-32042`), not a plain object; see
        Upstream-API evidence.
-     - On success, calls `config.onPayment?.(...)` inside its own `try/catch`
-       (`server.ts:123-132` — see Gotchas), runs the wrapped `handler`
-       (`server.ts:133`), then `return result.withReceipt(response as unknown as
-       McpToolResult) as unknown as R` (`server.ts:140`) — see Upstream-API evidence for
-       why the double cast is necessary.
+     - On success, probes the settlement receipt with a throwaway `result.withReceipt(new
+       Response(null) as unknown as McpToolResult)` (`server.ts:176`), reads
+       `probe._meta?.[Mcp.receiptMetaKey]?.reference` (`server.ts:177-178`), and runs it
+       through `txHashFromReference` (`server.ts:179`) — see the Gotchas entry for why this
+       second, throwaway `withReceipt` call is safe.
+     - Calls `config.onPayment?.(...)` inside its own `try/catch` (`server.ts:180-192` —
+       see Gotchas), spreading `txHash` in only when defined (`server.ts:183`), runs the
+       wrapped `handler` (`server.ts:193`), then `return result.withReceipt(response as
+       unknown as McpToolResult) as unknown as R` (`server.ts:200`) — the *real* attach
+       call, on the handler's actual result — see Upstream-API evidence for why the double
+       cast is necessary.
 - `wrapPaidMcpClient(client, opts)` (`client.ts:36-43`) — `McpClient.wrap(client, {
   methods: [stellarChargeClient({ secretKey: opts.secret, mode: "pull", rpcUrl:
   opts.rpcUrl })] })` (`client.ts:40-42`); `client` is constrained to `Pick<Client,
@@ -94,7 +111,12 @@ their internal type plumbing.
 
 - `mppx` — pinned **exact** `0.6.31` (controller ruling, matches `@stellarpay/core` and
   `@stellarpay/client`); `mppx/server` (`Mppx`, `Store`, `Transport`) and
-  `mppx/mcp-sdk/client` (`McpClient`).
+  `mppx/mcp-sdk/client` (`McpClient`). `server.ts` also imports `Mcp` from mppx's root
+  `"."` export (`server.ts:2`; `mppx/dist/index.js`'s `export * as Mcp from './Mcp.js'`)
+  for `Mcp.receiptMetaKey` — the `"org.paymentauth/receipt"` `_meta` key the mcp-sdk
+  transport's `respondReceipt` writes (`mppx/dist/Mcp.js:6`, `mppx/dist/mcp-sdk/server/
+  Transport.js:66-81`) — rather than hardcoding that string. This is a public entry point
+  of the same already-pinned package, not a new dependency.
 - `@stellar/mpp` (`^0.7.1`) — `@stellar/mpp/charge/server`'s `stellar.charge` (server
   method) and `@stellar/mpp/charge/client`'s `stellar` (client method, aliased
   `stellarChargeClient` in `client.ts`); `USDC_SAC_TESTNET` from the package root.
@@ -132,7 +154,7 @@ their internal type plumbing.
   (`@modelcontextprotocol/sdk/dist/esm/types.d.ts:7924-7927`: `class McpError extends
   Error { readonly code: number; ...; constructor(code: number, message: string, data?:
   unknown); }`), and `paymentRequiredCode = -32042`
-  (`mppx/dist/Mcp.d.ts:7`/`Mcp.js:2`). So `throw result.challenge` (`server.ts:122`) is a
+  (`mppx/dist/Mcp.d.ts:7`/`Mcp.js:2`). So `throw result.challenge` (`server.ts:159`) is a
   direct, un-adapted `throw` — no extraction of a `.challenge` sub-field or
   reconstruction into a different error class was needed; the brief's own inline comment
   ("challenge in error.data") describes `McpError.data`'s *contents* (`{ httpStatus,
@@ -146,7 +168,7 @@ their internal type plumbing.
   [] }` first, which doesn't apply here since `handler`'s result is always a plain object.
 - **A throwing `config.onPayment` hook is isolated from the paid tool call — it cannot
   turn an already-settled charge into a hard error for the caller.** `guard` wraps the
-  `config.onPayment?.(...)` call in its own `try/catch` (`server.ts:123-132`), logging via
+  `config.onPayment?.(...)` call in its own `try/catch` (`server.ts:180-192`), logging via
   `console.error("[stellarpay/mcp] onPayment hook threw; ignoring", hookError)` and
   swallowing the error rather than letting it propagate — the charge has already been
   accepted by `payment.charge(...)` at that point, so a metrics/DB write failure inside
@@ -156,16 +178,42 @@ their internal type plumbing.
   `test/onPaymentIsolation.test.ts`, which stubs the `mppx/server` module boundary (real
   `mppx` engine can't reach `status: 200` offline — see Testing) to drive a throwing
   `onPayment` through the guard and assert the handler's result still resolves.
-- **`ToolPaymentReceipt.raw` is currently never populated.** The receipt object passed to
-  `config.onPayment` is built directly in `guard` as `{ tool: toolName, amount,
-  timestamp: new Date().toISOString() }` (`server.ts:124`) — `raw` is never set, because
-  the actual settlement receipt (which may carry a raw reference such as a tx hash) only
-  materializes later, inside `result.withReceipt(...)`'s own receipt object
-  (`respondReceipt`, `Transport.js:66-81`), after `onPayment` has already fired. `raw?:
-  string` remains on the type for produced-interface parity and as a placeholder for a
-  future revision that reorders the call or threads the settlement receipt back into
-  `onPayment`'s payload — not functional today.
-- **`Store.memory()` (`server.ts:104`) is single-process, in-memory replay protection —
+- **`ToolPaymentReceipt.raw` is still never populated — but `txHash` now is, as of
+  2026-08-04.** Originally the receipt object passed to `config.onPayment` was built
+  without probing `withReceipt(...)` at all, so it could only ever carry the
+  charge-time fields (`tool`, `amount`, `timestamp`), never the settlement receipt's own
+  data (which only materialized later, inside the *second*, real `withReceipt(...)` call
+  on the handler's response). `guard` now probes early with a throwaway `withReceipt(new
+  Response(null) as unknown as McpToolResult)` (`server.ts:176`, see the entry below for
+  why this is safe) specifically to read `reference` before `onPayment` fires — but that
+  probe only ever extracts a validated `txHash` (`server.ts:177-179,183`); nothing reads
+  `method`/`status`/`challengeId`/etc. into a generic `raw` field, so `raw?: string`
+  remains unpopulated. It stays on the type for produced-interface parity and as a
+  placeholder for a future revision that also threads the full raw receipt through.
+- **The `guard` probe-then-attach two-call `withReceipt(...)` pattern is safe — verified
+  directly against the installed `mppx@0.6.31` source, not assumed by analogy with the
+  HTTP leg.** `guard` calls `result.withReceipt(...)` twice per paid call: once with a
+  throwaway `new Response(null)` to read the settlement receipt's `reference` before
+  `onPayment` fires (`server.ts:176`), and once for real with the handler's actual
+  response, whose return value is what the caller receives (`server.ts:200`). This is
+  safe because `withReceipt` is a pure function of its `response` argument, closing over
+  the charge's already-computed `receiptData` from mppx's internal `success()` helper
+  (`mppx/dist/server/Mppx.js:458-485`) — it performs no I/O, claims no store state, and
+  never mutates `response` or any shared state; it only ever *reads* `receiptData` and
+  returns a freshly spread object (`respondReceipt`, `mppx/dist/mcp-sdk/server/
+  Transport.js:66-81`: `{ ...normalizedResponse, _meta: { ...normalizedResponse._meta,
+  [receiptMetaKey]: mcpReceipt } }`). So the probe call and the real call are fully
+  independent, cannot double-charge or double-verify (`payment.charge(...)` itself only
+  ran once, above both calls), and the probe's own `{ content: [] }` normalization (a
+  `Response` instance is special-cased before the spread) never reaches the caller — only
+  the second call's result, built from the handler's real response, does. mppx trusts
+  this exact pattern internally too: `toNodeListener` (`mppx/dist/server/
+  Mppx.js:1489`) also calls `result.withReceipt(new globalThis.Response())` purely to
+  read headers off a throwaway probe before separately handling the real response.
+  `test/receiptTxHash.test.ts`'s third case (`"returns the handler's real response
+  untouched"`) asserts this directly: the handler's own `content` array survives
+  byte-for-byte in `guard`'s return value, not the probe's `{ content: [] }`.
+- **`Store.memory()` (`server.ts:141`) is single-process, in-memory replay protection —
   restated here, not just cross-referenced, since a reader of this doc alone must see
   it.** It is a plain in-process `Map`: state is lost on restart (a spent challenge could
   be re-verified after a redeploy or crash) and is not shared across processes or
@@ -177,7 +225,7 @@ their internal type plumbing.
   `Store.AtomicStore` (e.g. Redis-backed) is on the roadmap for multi-instance
   deployments, not implemented here.
 - **The generic `guard<A, R>`'s `R` is bridged into mppx's concrete `McpToolResult`
-  (`CallToolResult`) with an explicit double cast (`server.ts:140`), not a generic
+  (`CallToolResult`) with an explicit double cast (`server.ts:200`), not a generic
   constraint.** The brief's produced interface specifies `guard<A, R>` with `R` fully
   free; but `Transport.WithReceipt<Transport.McpSdk>` narrows its parameter to
   `CallToolResult` (`mppx/dist/server/Transport.d.ts:71`'s `WithReceipt` alias, resolving
@@ -190,7 +238,7 @@ their internal type plumbing.
   This relies on MCP tool handlers conventionally returning `CallToolResult`-shaped
   values, which is not enforced by `guard`'s own generic signature.
 - **Unpriced tools bypass mppx entirely — `handler` is returned unwrapped, not called
-  through a permissive branch.** `guard` (`server.ts:112-114`) returns the caller's
+  through a permissive branch.** `guard` (`server.ts:149-151`) returns the caller's
   `handler` function reference directly when `config.prices[toolName]` is unset — the
   second brief test (`"passes through tools without a configured price"`) asserts the
   original mock `handler` was called, which only holds because no wrapper intercepts it.
@@ -238,6 +286,16 @@ their internal type plumbing.
   response — unreachable offline against the real engine, which requires a genuinely
   signed credential verified via Soroban RPC — then asserts a throwing `onPayment` hook
   still lets the guarded call resolve with the handler's own result.
+- `test/receiptTxHash.test.ts` — 2026-08-04 addition. Uses the same `mppx/server`
+  module-boundary stub as `onPaymentIsolation.test.ts`, but with a `withReceipt` stub
+  that reproduces the real mcp-sdk transport's `respondReceipt` behavior verbatim
+  (`Response` instance → `{ content: [] }`, else pass through; both merge
+  `_meta[Mcp.receiptMetaKey]` from the same closed-over receipt) so the tests exercise
+  `guard`'s actual probe-then-attach logic against transport behavior that matches
+  production. Covers: `txHash` populated for a hash-shaped `reference`; `txHash` absent
+  (not `undefined` — absent as a key) for four malformed-`reference` shapes (missing,
+  wrong length, uppercase/non-hex, non-string); and the handler's real `content` array
+  reaching the caller untouched by the throwaway probe.
 - Run: `pnpm --filter @stellarpay/mcp test` (or `pnpm test` from repo root).
 
 ## Verified Against
@@ -262,3 +320,22 @@ their internal type plumbing.
   to 19 files / 88 tests from `@stellarpay/core`'s moved-in `price.test.ts`/`networks.test.ts`
   and new `config.test.ts` cases (see `docs/modules/core.md`), not from anything in this
   package.
+- 2026-08-04 (MCP tool-payment on-chain provability): added `ToolPaymentReceipt.txHash`
+  and the `guard` probe that populates it (`server.ts:56-76,176-183`, `TX_HASH_PATTERN`/
+  `txHashFromReference` at `server.ts:30-54`), plus `test/receiptTxHash.test.ts` (6 new
+  tests). Verified directly against the installed `mppx@0.6.31` and `@stellar/mpp@0.7.1`
+  compiled source under `node_modules/.pnpm/` (not just `.d.ts`, and not by analogy with
+  the HTTP mpp-charge leg) that: the mcp-sdk transport's `respondReceipt` writes the
+  settled receipt to `_meta[Mcp.receiptMetaKey]` with a `reference` field carrying the
+  same on-chain broadcast tx hash `@stellar/mpp`'s `stellar.charge` server method uses for
+  the HTTP leg (`reference: hash`, `@stellar/mpp/dist/charge/server/Charge.js` — same
+  string across its `signedHash`/`hash`/`transaction` payload cases); and that
+  `withReceipt(...)` is a pure, side-effect-free read of the charge's closed-over
+  receipt, safe to call a second, throwaway time before the real attach call (see the new
+  Gotchas entry). `mcp` package test count: 4 → 10 tests (2 → 3 files); root suite: 154 →
+  160 tests (29 → 30 files); `pnpm typecheck` and `pnpm --filter @stellarpay/mcp
+  build`/`pnpm --filter @stellarpay-examples/mcp-server typecheck` all exit 0. Also
+  updated `examples/mcp-server/src/mcp.ts`'s `onPayment` adapter (`mcp.ts:27-40`) to
+  spread `txHash` through to the dashboard receipt and corrected its stale "`raw` is
+  never populated" comment to distinguish `raw` (still unpopulated) from `txHash` (now
+  populated) — see `docs/modules/examples.md`'s mcp-server section.
