@@ -181,6 +181,11 @@ app.get("/weather", (_req, res) => res.json({ forecast: "sunny" }));
 app.listen(3000);
 ```
 
+Mount **before** your routes, in every framework — a paywall registered after a route can't
+intercept it. Hono is `app.use("*", stellarpayHono(paywall))`; Fastify is
+`await app.register(stellarpayFastify, { config })` at the app root, awaited before you declare
+routes ([hono](./packages/hono/README.md), [fastify](./packages/fastify/README.md)).
+
 **4. Pay from an agent** — `createPayingFetch` transparently pays every 402 it hits, up to your
 spend limits:
 
@@ -235,11 +240,14 @@ instance would forget every payment it has seen. One arity trap: a tool declared
 `examples/mcp-server/src/mcp.ts:57`. Full server and client examples:
 [packages/mcp](./packages/mcp/README.md).
 
-**Receipts.** Every settled payment — HTTP or MCP — invokes your `onPayment(receipt)` hook with
-`{ scheme, route, network, amount, asset, payer?, txHash?, raw?, timestamp }`
-(`packages/core/src/types.ts:25-45`). `txHash` is a real Stellar transaction hash you can look
-up on Horizon; that's what the [live dashboard](#links) renders as its on-chain proof. `payer`
-is only populated on `x402` (MPP's wire format carries no payer field).
+**Receipts.** Every settled payment invokes your `onPayment(receipt)` hook. On HTTP routes the
+shape is `{ scheme, route, network, amount, asset, payer?, txHash?, raw?, timestamp }`
+(`packages/core/src/types.ts:25-45`); MCP tool payments use their own, narrower
+`ToolPaymentReceipt` — `{ tool, amount, raw?, txHash?, timestamp }`
+(`packages/mcp/src/server.ts:55-75`) — since there is no HTTP route or scheme to name. `txHash`
+is a real Stellar transaction hash you can look up on Horizon, and it's what the
+[live dashboard](#links) renders as its on-chain proof. `payer` exists only on the HTTP receipt
+and only `x402` fills it in: MPP's wire format carries no payer field.
 
 ## Examples
 
