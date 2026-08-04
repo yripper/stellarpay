@@ -1,7 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { Challenge } from "mppx";
-import { createMppChargeModule } from "../src/schemes/mppCharge.js";
+import { createMppChargeModule, txHashFromReceiptHeader } from "../src/schemes/mppCharge.js";
 import { decimalToBaseUnits } from "../src/internal/price.js";
+
+// Real production Payment-Receipt header, captured live (see docs/modules/core.md's
+// "Confirmed Wire Shapes"): base64url of
+// {"method":"stellar","reference":"20e4b38c2d8589b01ab1069209448bb653ce7650ecc9edbb33f6d103f0c9d05a","status":"success","timestamp":"2026-08-04T16:51:21.790Z"}
+// `reference` resolves on Horizon testnet as a real, successful transaction (ledger 3968442) —
+// confirmed via `curl https://horizon-testnet.stellar.org/transactions/20e4b3...` before this
+// test was written.
+const REAL_RECEIPT_HEADER =
+  "eyJtZXRob2QiOiJzdGVsbGFyIiwicmVmZXJlbmNlIjoiMjBlNGIzOGMyZDg1ODliMDFhYjEwNjkyMDk0NDhiYjY1M2NlNzY1MGVjYzllZGJiMzNmNmQxMDNmMGM5ZDA1YSIsInN0YXR1cyI6InN1Y2Nlc3MiLCJ0aW1lc3RhbXAiOiIyMDI2LTA4LTA0VDE2OjUxOjIxLjc5MFoifQ";
+const REAL_TX_HASH = "20e4b38c2d8589b01ab1069209448bb653ce7650ecc9edbb33f6d103f0c9d05a";
 
 const cfg = {
   network: "stellar:testnet" as const, payTo: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
@@ -38,5 +48,45 @@ describe("mpp-charge module", () => {
     if (out.type !== "respond") throw new Error("expected a 402 respond outcome");
     const challenge = Challenge.fromResponse(out.response);
     expect(challenge.request["amount"]).toBe(decimalToBaseUnits("0.01").toString());
+  });
+});
+
+describe("txHashFromReceiptHeader", () => {
+  it("decodes a real production Payment-Receipt header to its settlement tx hash", () => {
+    expect(txHashFromReceiptHeader(REAL_RECEIPT_HEADER)).toBe(REAL_TX_HASH);
+  });
+
+  it("returns undefined when the header is absent", () => {
+    expect(txHashFromReceiptHeader(undefined)).toBeUndefined();
+  });
+
+  it("returns undefined for a header that is not valid base64url JSON", () => {
+    expect(txHashFromReceiptHeader("not-valid-base64url-json!!!")).toBeUndefined();
+  });
+
+  it("returns undefined when the decoded payload is valid base64url but not JSON", () => {
+    // base64url of the plain string "hello world", not JSON at all
+    expect(txHashFromReceiptHeader(Buffer.from("hello world", "utf8").toString("base64url"))).toBeUndefined();
+  });
+
+  it("returns undefined when the decoded JSON has no reference field", () => {
+    const header = Buffer.from(JSON.stringify({ method: "stellar", status: "success" }), "utf8").toString("base64url");
+    expect(txHashFromReceiptHeader(header)).toBeUndefined();
+  });
+
+  it("returns undefined when reference is not hash-shaped (wrong length)", () => {
+    const header = Buffer.from(JSON.stringify({ reference: "abc123" }), "utf8").toString("base64url");
+    expect(txHashFromReceiptHeader(header)).toBeUndefined();
+  });
+
+  it("returns undefined when reference is not hash-shaped (uppercase / non-hex)", () => {
+    const upper = REAL_TX_HASH.toUpperCase();
+    const header = Buffer.from(JSON.stringify({ reference: upper }), "utf8").toString("base64url");
+    expect(txHashFromReceiptHeader(header)).toBeUndefined();
+  });
+
+  it("returns undefined when reference is not a string", () => {
+    const header = Buffer.from(JSON.stringify({ reference: 12345 }), "utf8").toString("base64url");
+    expect(txHashFromReceiptHeader(header)).toBeUndefined();
   });
 });

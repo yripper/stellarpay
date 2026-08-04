@@ -90,7 +90,12 @@ internals or unhandled rejections for the host app.
 ### Scheme modules (internal — not exported from `index.ts`)
 
 - `createMppChargeModule(cfg): SchemeModule` — per-request MPP settlement via `mppx` +
-  `@stellar/mpp/charge/server`, in-memory replay store (`packages/core/src/schemes/mppCharge.ts:27-58`).
+  `@stellar/mpp/charge/server`, in-memory replay store (`packages/core/src/schemes/mppCharge.ts:55-89`).
+  On a successful settlement, populates `receipt.txHash` from the mpp `Payment-Receipt`
+  header via `txHashFromReceiptHeader` (`mppCharge.ts:28-39`, wired at `mppCharge.ts:79,84-85`)
+  — see Gotchas and "Confirmed Wire Shapes" below. Does **not** populate `receipt.payer`: the
+  mppx `Receipt` schema (`method`, `reference`, `externalId`, `subscriptionId`, `status`,
+  `timestamp` — `node_modules/mppx/dist/Receipt.d.ts`) has no payer-equivalent field to read.
 - `createMppChannelModule(cfg): SchemeModule` — voucher-based MPP payment channel via
   `@stellar/mpp/channel/server`, in-memory state (`packages/core/src/schemes/mppChannel.ts:37-71`).
   Also re-exports `close`, `getChannelState`, `watchChannel` for ops tooling (`mppChannel.ts:9`).
@@ -247,7 +252,11 @@ as a runtime `dependency`.
   `Challenge.fromResponse` and asserts the wire `request.amount` equals
   `decimalToBaseUnits("0.01")` in base units — not just that the response type is `"respond"`
   — making the `dollarToDecimal`/`toBaseUnits` conversion pipeline load-bearing instead of
-  merely implied by a non-throw.
+  merely implied by a non-throw. `describe("txHashFromReceiptHeader", ...)` (8 cases) feeds
+  the real production `Payment-Receipt` header quoted in "Confirmed Wire Shapes" below through
+  the helper directly and asserts the tx hash comes out, plus the negative cases: missing
+  header, undecodable base64url, valid-base64-but-not-JSON, JSON with no `reference`,
+  non-hex/wrong-length `reference`, non-string `reference` — every one must yield `undefined`.
 - `x402.test.ts` — `"sends a Bearer Authorization header to the facilitator when
   facilitatorApiKey is set"` / `"sends no Authorization header when facilitatorApiKey is not
   set"`: both capture the mocked fetch's `init.headers` on the `/supported` call and assert
@@ -278,9 +287,9 @@ the smoke run confirms them" shapes referenced elsewhere in this doc and in `x40
   **confirmed correct**: both fields are present as top-level strings on the real facilitator
   response, and `receipt.txHash` / `receipt.payer` were populated exactly as expected in the
   smoke run.
-- **mpp-charge `Payment-Receipt` header** (`packages/core/src/schemes/mppCharge.ts:53`,
-  `receipt.raw`) — the header value is a base64(url)-encoded JSON string. Decoding the
-  smoke run's captured value gives:
+- **mpp-charge `Payment-Receipt` header** (`packages/core/src/schemes/mppCharge.ts:79`,
+  `receipt.raw`) — the header value is a base64url-encoded (unpadded) JSON string. Decoding
+  the smoke run's captured value gives:
   ```json
   {
     "method": "stellar",
@@ -290,13 +299,32 @@ the smoke run confirms them" shapes referenced elsewhere in this doc and in `x40
   }
   ```
   Documented as **opaque-but-observed**: this is `mppx`/`@stellar/mpp`'s own header format,
-  not something `@stellarpay/core` controls or has a published schema for, so no field-level
-  parsing is added on top of it — `mppCharge.ts` stores the raw header string as-is
-  (`receipt.raw`) and does not attempt to extract a `txHash`/`payer` from it (unlike the x402
-  leg), which the smoke run's `receipt.txHash: (absent)` / `receipt.payer: (absent)` output
-  for the `/mpp` leg confirms is the current, intentional behavior — `reference` here is an
-  mppx-internal challenge/payment id, not a verified on-chain tx hash, so it is deliberately
-  not mapped onto `Receipt.txHash`.
+  not something `@stellarpay/core` controls or has a published schema for — `mppCharge.ts`
+  still stores the raw header string as-is (`receipt.raw`), unparsed and unchanged.
+  **Correction (2026-08-04):** an earlier version of this doc claimed `reference` was "an
+  mppx-internal challenge/payment id, not a verified on-chain tx hash" and that it was
+  deliberately not mapped onto `Receipt.txHash`. That was wrong — verified by reading
+  `@stellar/mpp@0.7.1`'s own server source
+  (`node_modules/@stellar/mpp/dist/charge/server/Charge.js`): all three credential flows
+  (`signedHash`, `hash`, `transaction`) set `reference: hash` / `reference: sendResult.hash`
+  to the actual broadcast transaction's hash — the `hash` credential flow even calls
+  `rpcServer.getTransaction(hash)` to confirm it landed on-chain before building the receipt.
+  The above `9f8292f4...` reference independently resolves on Horizon
+  (`https://horizon-testnet.stellar.org/transactions/9f8292f4...`) as a successful transaction
+  in ledger 3952505, same as a second, separately-captured production receipt whose
+  `reference` (`20e4b38c2d8589b01ab1069209448bb653ce7650ecc9edbb33f6d103f0c9d05a`) resolves as
+  a successful transaction in ledger 3968442 — both re-confirmed live on 2026-08-04. `mppCharge.ts` now decodes the header and, when
+  `reference` is present and hash-shaped (64-char lowercase hex), sets `receipt.txHash` from
+  it via `txHashFromReceiptHeader` (`mppCharge.ts:16-39`, wired at `mppCharge.ts:84-85`) — the
+  same shape the dashboard already renders as a `stellar.expert` link for x402 receipts
+  (`examples/dashboard/public/index.html:103,112`; see `docs/modules/examples.md`'s dashboard
+  section). The header's schema is still not owned by this package, so the decode is
+  defensive end to end: a missing header, undecodable base64url, non-JSON payload, missing
+  `reference`, or a `reference` that isn't hash-shaped all yield `undefined` rather than a
+  guessed value — never surface a wrong explorer link. `receipt.payer` is **not** populated
+  for mpp-charge: the mppx `Receipt` schema it decodes from has no payer-equivalent field
+  (`method`, `reference`, `externalId`, `subscriptionId`, `status`, `timestamp` only —
+  `node_modules/mppx/dist/Receipt.d.ts`), unlike the x402 leg's `settle.payer`.
 
 ## stellar-sdk version (2026-08-03)
 
@@ -353,3 +381,13 @@ tests) all pass unmodified.
   "import('@stellarpay/core').then(m => console.log(typeof m.stellarpay))"` printing
   `"function"` were all re-verified against the moved layout — see the root fix-wave report
   for full command output.
+- 2026-08-04 (mpp-charge `txHash`): `txHashFromReceiptHeader` (`mppCharge.ts:16-39`) added
+  and wired at `mppCharge.ts:79,84-85`; line numbers throughout this doc recounted against the
+  current file. `@stellar/mpp@0.7.1`'s server source
+  (`node_modules/@stellar/mpp/dist/charge/server/Charge.js`) read directly to confirm
+  `reference` is the real settlement hash across all three credential flows (see "Confirmed
+  Wire Shapes" above); two independently-captured `reference` values re-verified live against
+  Horizon testnet the same day (ledgers 3952505 and 3968442). mppx's `Receipt` schema
+  (`node_modules/mppx/dist/Receipt.d.ts`) read to confirm it has no payer-equivalent field, so
+  `receipt.payer` is correctly left unset for mpp-charge. `pnpm --filter @stellarpay/core test`
+  passes 63/63 (was 55, +8 for `txHashFromReceiptHeader`'s test suite); `pnpm typecheck` clean.
