@@ -17,7 +17,17 @@
   #stats { display: flex; gap: 2rem; margin-left: auto; }
   #stats div { text-align: right; }
   #stats .n { color: var(--cyan); font-size: 1.1rem; font-weight: 600; }
+  #stats .n + .n { margin-left: .5rem; }
   #stats .l { color: var(--dim); font-size: .7rem; text-transform: uppercase; letter-spacing: .1em; }
+  #verify-bar {
+    padding: .6rem 1.5rem; border-bottom: 1px solid var(--border); display: flex;
+    align-items: center; gap: .85rem; font-size: .78rem; color: var(--dim); flex-wrap: wrap;
+  }
+  #verify-link {
+    color: var(--green); border: 1px solid var(--green); border-radius: 4px; text-decoration: none;
+    padding: .25rem .7rem; font-weight: 700; letter-spacing: .06em; white-space: nowrap;
+  }
+  #verify-link:hover { background: var(--green); color: var(--bg); }
   #unleash-bar { padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 1rem; }
   #unleash {
     background: transparent; color: var(--green); border: 1px solid var(--green); border-radius: 4px;
@@ -48,8 +58,17 @@
   <div id="stats">
     <div><div class="n" id="stat-count">0</div><div class="l">payments</div></div>
     <div><div class="n" id="stat-volume">0.0000</div><div class="l">USDC volume</div></div>
+    <div id="buyer-balance" style="display:none">
+      <div><span class="n" id="stat-usdc">—</span><span class="n" id="stat-xlm">—</span></div>
+      <div class="l">buyer wallet · live via horizon</div>
+    </div>
   </div>
 </header>
+<div id="verify-bar" style="display:none">
+  <a id="verify-link" href="#" target="_blank" rel="noopener">verify on-chain ↗</a>
+  <span>Every payment in this feed settles into that Stellar account. stellar.expert is a third-party
+    block explorer — it is not served by us. Click through and check the ledger yourself.</span>
+</div>
 <div id="unleash-bar">
   <button id="unleash">▶ UNLEASH THE AGENT</button>
   <span id="unleash-msg">An autonomous agent will buy intel across this economy, within its spend limits.</span>
@@ -101,6 +120,57 @@
     feed.appendChild(row); // column-reverse flex → newest visually on top
   }
 
+  // --- On-chain proof: a "verify on-chain" link plus a buyer balance read straight from
+  // Horizon by this browser (never through our server), so a skeptical judge can independently
+  // confirm the feed is real. Both stay hidden until /config confirms the relevant public key
+  // is configured — see server.ts's GET /config and README.md's env var docs.
+  const HORIZON_URL = "https://horizon-testnet.stellar.org";
+  const verifyBar = document.getElementById("verify-bar");
+  const verifyLink = document.getElementById("verify-link");
+  const buyerBalance = document.getElementById("buyer-balance");
+  const statUsdc = document.getElementById("stat-usdc");
+  const statXlm = document.getElementById("stat-xlm");
+  let buyerPublicKey;
+
+  function fmtBalance(raw) {
+    const n = Number(raw);
+    return Number.isFinite(n) ? n.toFixed(4) : "—";
+  }
+
+  // Reads the buyer's balance directly from Horizon in the browser — deliberately not proxied
+  // through our backend, so the number can't be a canned/replayed value from our own server.
+  async function refreshBuyerBalance() {
+    if (!buyerPublicKey) return;
+    try {
+      const res = await fetch(HORIZON_URL + "/accounts/" + encodeURIComponent(buyerPublicKey));
+      if (!res.ok) throw new Error("horizon status " + res.status);
+      const account = await res.json();
+      const balances = Array.isArray(account.balances) ? account.balances : [];
+      const usdc = balances.find((b) => b.asset_code === "USDC");
+      const xlm = balances.find((b) => b.asset_type === "native");
+      statUsdc.textContent = fmtBalance(usdc ? usdc.balance : 0) + " USDC";
+      statXlm.textContent = fmtBalance(xlm ? xlm.balance : 0) + " XLM";
+    } catch {
+      statUsdc.textContent = "— USDC";
+      statXlm.textContent = "— XLM";
+    }
+  }
+
+  fetch("/config")
+    .then((res) => res.json())
+    .then((cfg) => {
+      if (cfg && typeof cfg.payTo === "string" && cfg.payTo) {
+        verifyLink.href = "https://stellar.expert/explorer/testnet/account/" + encodeURIComponent(cfg.payTo);
+        verifyBar.style.display = "";
+      }
+      if (cfg && typeof cfg.buyerPublic === "string" && cfg.buyerPublic) {
+        buyerPublicKey = cfg.buyerPublic;
+        buyerBalance.style.display = "";
+        void refreshBuyerBalance();
+      }
+    })
+    .catch(() => { /* /config unreachable — both affordances just stay hidden */ });
+
   const source = new EventSource("/events");
   source.onmessage = (msg) => {
     try {
@@ -111,6 +181,8 @@
       if (typeof ev.seq === "number" && ev.seq <= lastSeq) return;
       if (typeof ev.seq === "number") lastSeq = ev.seq;
       render(ev);
+      // Every receipt (not narration) means the agent spent — tick the balance panel down.
+      if (ev.kind !== "agent-log") void refreshBuyerBalance();
     } catch { /* never let one bad event kill the feed */ }
   };
 

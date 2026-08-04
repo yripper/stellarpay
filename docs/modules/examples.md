@@ -48,15 +48,22 @@ optionally establishes the buyer's USDC trustline fee-free via OZ Channels). Bot
 - `examples/dashboard/src/ingest.ts` — `parseIngestBody()`, hand-rolled validation of the
   `/ingest` request body (two shapes: `receipt` or `agent-log`).
 - `examples/dashboard/src/server.ts` — `buildApp(deps): Hono`, the pure app factory wiring
-  the buffer, cooldown, and ingest validator into four routes.
+  the buffer, cooldown, and ingest validator into five routes (`healthz`, `/`, `/config`,
+  `/ingest`, `/events`, `/unleash` — see Endpoints below).
 - `examples/dashboard/src/main.ts` — entrypoint: loads `.env`, reads `INGEST_SECRET`/
-  `AGENT_URL`/`PORT`, reads `public/index.html`, and binds `buildApp()`'s `Hono` instance to
-  a socket via `@hono/node-server`'s `serve()`.
+  `AGENT_URL`/`PORT`/`DEMO_PAYTO`/`DEMO_BUYER_PUBLIC`, reads `public/index.html`, and binds
+  `buildApp()`'s `Hono` instance to a socket via `@hono/node-server`'s `serve()`.
 - `examples/dashboard/public/index.html` — served at `GET /`; the real dashboard UI (dark
   "mission control" theme). Self-contained: inline `<style>`/`<script>`, no build step, no
   CDN dependency. Opens an `EventSource` on `/events` and renders each `FeedEvent` as a feed
   row (or an italic narration line for `kind: "agent-log"`); drives the "▶ UNLEASH THE AGENT"
-  button against `/unleash`, including its 202/429/503 states and cooldown countdown. See
+  button against `/unleash`, including its 202/429/503 states and cooldown countdown. Fetches
+  `GET /config` on load to learn the seller/buyer public keys for two independent-verification
+  affordances (`index.html:123-172`, both degrade to hidden when their key is unset): a
+  "verify on-chain ↗" link to the seller account on stellar.expert (`DEMO_PAYTO`), and a
+  buyer USDC/XLM balance panel fetched client-side straight from
+  `https://horizon-testnet.stellar.org/accounts/<DEMO_BUYER_PUBLIC>` — not proxied through
+  this server — refreshed after every non-`agent-log` feed event. See
   `examples/dashboard/README.md`'s "Dashboard UI" section for the full field-by-field
   breakdown.
 - `examples/dashboard/test/{buffer,cooldown,ingest,server}.test.ts` — unit tests for the
@@ -182,26 +189,31 @@ optionally establishes the buyer's USDC trustline fee-free via OZ Channels). Bot
 
 ## Endpoints / Public Surface
 
-`examples/dashboard`'s HTTP surface (`examples/dashboard/src/server.ts:18-92`):
+`examples/dashboard`'s HTTP surface (`examples/dashboard/src/server.ts:30-109`):
 
-- `GET /healthz` — `200 { ok: true }`. Open, no auth (`server.ts:27`).
-- `GET /` — `200`, serves the `html` string passed into `buildApp()` (`server.ts:28`).
+- `GET /healthz` — `200 { ok: true }`. Open, no auth (`server.ts:39`).
+- `GET /` — `200`, serves the `html` string passed into `buildApp()` (`server.ts:40`).
+- `GET /config` — `200 { payTo: string | null, buyerPublic: string | null }`. Open, no auth —
+  both fields are public Stellar keys (`server.ts:42-45`). `null` when the corresponding
+  `Deps.payTo`/`Deps.buyerPublic` (from `DEMO_PAYTO`/`DEMO_BUYER_PUBLIC`) is unset. The static
+  page fetches this on load to decide whether to show the "verify on-chain" link and the live
+  buyer-balance panel (`public/index.html:159-172`).
 - `POST /ingest` — header `Authorization: Bearer <INGEST_SECRET>`; JSON body
   `{ service: string, kind: "receipt", receipt: object }` or
   `{ service: string, kind: "agent-log", message: string }`. `401` on missing/wrong bearer
   token, `400` on malformed JSON or a body `parseIngestBody()` rejects, `204` on success
-  (`server.ts:30-49`). A successful ingest stamps `at` server-side, pushes onto the ring
+  (`server.ts:47-66`). A successful ingest stamps `at` server-side, pushes onto the ring
   buffer, and fans the resulting `FeedEvent` out to every live `/events` subscriber.
 - `GET /events` — SSE stream of `FeedEvent` JSON. On connect, replays the full current
   buffer (oldest first) as SSE frames (`data` = `JSON.stringify(event)`, `id` = `seq`), then
   stays open and pushes new events as they arrive. Sends an `event: ping` heartbeat frame
-  every 25s to keep proxies from idling the connection out (`server.ts:51-73`).
+  every 25s to keep proxies from idling the connection out (`server.ts:68-90`).
 - `POST /unleash` — fires the configured agent's `/run` endpoint. `503 { error:
   "agent_not_configured" }` if `agentUrl` is unset; `429 { error: "cooldown",
   retryAfterSeconds }` if within the cooldown window; otherwise `202 { status: "unleashed"
   }` and a fire-and-forget `POST <agentUrl>/run` with the ingest secret as bearer auth and a
   5s timeout — an unreachable or failing agent never turns the `202` into an error
-  (`server.ts:75-89`).
+  (`server.ts:92-106`).
 
 `examples/express-api`'s HTTP surface (`examples/express-api/src/server.ts:66-83`). Prices
 come from the `PRICES` constant (`server.ts:8`), both `"$0.02"`:
@@ -292,9 +304,11 @@ ingest events throughout every run (the `/ingest` contract above).
 
 TS surface consumed by later tasks:
 
-- `buildApp(deps: Deps): Hono` (`examples/dashboard/src/server.ts:18`) — `Deps` = `{
+- `buildApp(deps: Deps): Hono` (`examples/dashboard/src/server.ts:30`) — `Deps` = `{
   ingestSecret: string; agentUrl?: string; cooldown?: Cooldown; agentFetch?: typeof fetch;
-  html: string }` (`server.ts:7-15`).
+  html: string; payTo?: string; buyerPublic?: string }` (`server.ts:7-27`). `payTo`/
+  `buyerPublic` (from `DEMO_PAYTO`/`DEMO_BUYER_PUBLIC`, wired in `main.ts`) feed `GET /config`
+  only — everything else in `buildApp()` is unchanged by their presence or absence.
 - `FeedEvent` (`examples/dashboard/src/buffer.ts:2-11`) — `{ seq: number; at: string;
   service: string; kind: "receipt" | "agent-log"; receipt?: Record<string, unknown>;
   message?: string }`.
@@ -389,15 +403,16 @@ TS surface consumed by later tasks:
   parsed `Omit<FeedEvent, "seq" | "at">` or `undefined`. Rejects non-objects, empty
   `service`, a `receipt` shape whose `receipt` field isn't a plain object, an `agent-log`
   shape with an empty `message`, and any other `kind`.
-- `buildApp(deps: Deps)` (`examples/dashboard/src/server.ts:18-92`) — constructs one
+- `buildApp(deps: Deps)` (`examples/dashboard/src/server.ts:30-109`) — constructs one
   `createFeedBuffer(200)`, one `Set` of SSE subscriber callbacks, and either `deps.cooldown`
-  or a fresh `createCooldown(120_000)` (2-minute default), then registers the four routes
+  or a fresh `createCooldown(120_000)` (2-minute default), then registers the five routes
   above closed over those instances.
-- `main.ts` entrypoint (`examples/dashboard/src/main.ts:1-25`) — loads `.env` via Node 22's
+- `main.ts` entrypoint (`examples/dashboard/src/main.ts:1-32`) — loads `.env` via Node 22's
   `process.loadEnvFile()` guarded against `ENOENT` (`main.ts:6-11`, same pattern as
   `scripts/smoke.ts:39-44`), exits 1 if `INGEST_SECRET` is unset (`main.ts:14-17`), reads
-  `public/index.html` relative to the module URL (`main.ts:19`), and binds via
-  `@hono/node-server`'s `serve({ fetch: app.fetch, port })` (`main.ts:23-25`).
+  `public/index.html` relative to the module URL (`main.ts:19`), reads `DEMO_PAYTO`/
+  `DEMO_BUYER_PUBLIC` as plain optionals (no exit-1 guard — both are optional, `main.ts:25-26`),
+  and binds via `@hono/node-server`'s `serve({ fetch: app.fetch, port })` (`main.ts:29-31`).
 - `createReceiptReporter(opts)` (`examples/express-api/src/reportReceipt.ts:9-29`) — returns
   a `void`-returning closure. Returns early without calling `fetch` when either
   `dashboardUrl` or `ingestSecret` is falsy (`reportReceipt.ts:20`), otherwise POSTs
@@ -471,9 +486,9 @@ TS surface consumed by later tasks:
   rejection propagates to the caller; see the resilience gotcha below for why that is still
   safe on Fastify.
 - `buildApp(env)` (`examples/fastify-api/src/server.ts:8-31`) — builds the reporter
-  (`server.ts:9`), then a `StellarpayConfig` with no explicit `rpcUrl` — `mppCharge.ts:35`
+  (`server.ts:9`), then a `StellarpayConfig` with no explicit `rpcUrl` — `mppCharge.ts:63`
   falls back to `NETWORKS[cfg.network].rpcUrl` when unset, so omitting it here is intentional,
-  not an oversight (`packages/core/src/schemes/mppCharge.ts:35`). `onPayment` forwards every
+  not an oversight (`packages/core/src/schemes/mppCharge.ts:63`). `onPayment` forwards every
   receipt to the reporter (`server.ts:16`). `await app.register(stellarpayFastify, { config })`
   is called and awaited **before** any route registration (`server.ts:20`) — `stellarpayFastify`
   is a `skip-override` plugin, so its `onRequest` hook gates the whole app rather than being
@@ -814,11 +829,17 @@ TS surface consumed by later tasks:
   `asset_stats` tool has the identical `balances.authorized`-only shape and the identical
   `supply` field name (`mcp-server/src/intel.ts:72`) but was **not** renamed — out of scope
   for this pass, flagged here rather than silently left inconsistent.
-- **The mpp-charge receipt carries no `payer` or `txHash`.** `packages/core/src/schemes/
-  mppCharge.ts:51-54` builds it from the `Payment-Receipt` response header and sets only
-  `scheme`/`route`/`network`/`amount`/`asset`/`raw`/`timestamp`; the payer and transaction
-  hash live inside the opaque `raw` payload. On the dashboard those two columns render `—`
-  for every MPP row while x402 rows show both. Expected, not a wiring bug.
+- **The mpp-charge receipt carries `txHash` but never `payer`.** As of 2026-08-04,
+  `packages/core/src/schemes/mppCharge.ts:79,84-85` decodes the `Payment-Receipt` response
+  header via `txHashFromReceiptHeader` (`mppCharge.ts:16-39`) and sets `receipt.txHash` from
+  its `reference` field whenever that field is present and hash-shaped (64-char lowercase
+  hex) — `@stellar/mpp`'s server sets `reference` to the real broadcast transaction hash, the
+  same one Horizon indexes (see `docs/modules/core.md`'s "Confirmed Wire Shapes"). `payer` is
+  still never set: the mppx `Receipt` schema it decodes (`method`, `reference`, `externalId`,
+  `subscriptionId`, `status`, `timestamp`) has no payer-equivalent field, unlike the x402
+  leg's `settle.payer`. On the dashboard, the payer column still renders `—` for every MPP row
+  (there is nothing to show), but the settlement-link column now renders the same as x402 rows
+  whenever settlement succeeded — no longer an MPP-only gap.
 - **`sponsorGas` and `sponsorSecret` must be set together or not at all.** `parseConfig`
   rejects a route with `sponsorGas: true` when `sponsorSecret` is absent
   (`packages/core/src/config.ts:106-111`), which would throw at `buildApp()` time. Both are
@@ -925,12 +946,14 @@ TS surface consumed by later tasks:
   an adapter here would be redundant machinery, same conclusion as hono-api reached by a
   different framework mechanism.
 - **No explicit `rpcUrl` in this service's `StellarpayConfig`, unlike express-api's mpp-charge
-  route.** `mppCharge.ts:35` (`packages/core/src/schemes/mppCharge.ts`) falls back to
+  route.** `mppCharge.ts:63` (`packages/core/src/schemes/mppCharge.ts`) falls back to
   `NETWORKS[cfg.network].rpcUrl` when `cfg.rpcUrl` is unset, so `server.ts` omitting it is a
   valid simplification, not a gap — verified by the live paid call below actually settling.
-- **The mpp-charge receipt carries no `payer` or `txHash`**, same as express-api's `/deep-dive`
-  route (`packages/core/src/schemes/mppCharge.ts:51-54`) — the dashboard's payer/txHash columns
-  render `—` for every receipt this service reports.
+- **The mpp-charge receipt carries `txHash` (as of 2026-08-04) but still no `payer`**, same as
+  express-api's `/deep-dive` route (`packages/core/src/schemes/mppCharge.ts:16-39,79,84-85`;
+  see the Gotchas entry above and `docs/modules/core.md`'s "Confirmed Wire Shapes") — the
+  dashboard's payer column still renders `—` for every receipt this service reports, but the
+  settlement-link column now renders whenever settlement succeeded.
 - **`rpcUrl`/`sponsorSecret`/`facilitatorApiKey` are all absent from `Env`.** This service has
   one route on one scheme (mpp-charge, unsponsored) and needs none of them — a deliberate
   minimal `Env` shape, matching hono-api's precedent of dropping fields a service's single
@@ -1090,17 +1113,19 @@ TS surface consumed by later tasks:
 - `examples/dashboard/test/ingest.test.ts` — accepts both valid shapes; `it.each` over seven
   malformed-body cases (non-object, wrong types, empty strings, unknown `kind`, etc.).
 - `examples/dashboard/test/server.test.ts` — HTTP-level tests via `app.request()` (no real
-  socket): `/healthz` open; `/ingest` 401 on missing/wrong bearer, 400 on malformed
-  JSON/body, 204 on a valid receipt; `GET /events` replays previously ingested events to a
-  newly connected subscriber in `seq` order (reads the SSE stream directly and cancels once
-  both buffered events arrive, which drives the same `stream.onAbort()` cleanup path a real
-  client disconnect would); `/unleash` 503 with no agent configured, 202 + agent `fetch`
-  called with the right URL/headers on first call, 429 with the exact `retryAfterSeconds` on
-  a call within the cooldown window, and 202 even when the agent `fetch` rejects.
+  socket): `/healthz` open; `GET /config` reports `{ payTo: null, buyerPublic: null }` when
+  `Deps.payTo`/`Deps.buyerPublic` are unset and echoes them back unchanged when set; `/ingest`
+  401 on missing/wrong bearer, 400 on malformed JSON/body, 204 on a valid receipt; `GET
+  /events` replays previously ingested events to a newly connected subscriber in `seq` order
+  (reads the SSE stream directly and cancels once both buffered events arrive, which drives
+  the same `stream.onAbort()` cleanup path a real client disconnect would); `/unleash` 503
+  with no agent configured, 202 + agent `fetch` called with the right URL/headers on first
+  call, 429 with the exact `retryAfterSeconds` on a call within the cooldown window, and 202
+  even when the agent `fetch` rejects.
 - `examples/dashboard/test/integration.sse.test.ts` — the demo-owned pipeline (reporter →
   `/ingest` auth → buffer → `/events`) proven over a **real HTTP socket**, not `app.request()`:
   `beforeAll` binds `buildApp()` via `@hono/node-server`'s `serve({ fetch: app.fetch, port: 0
-  })` on an ephemeral port (`server.ts:18`, `serve` signature verified against
+  })` on an ephemeral port (`server.ts:30`, `serve` signature verified against
   `node_modules/.pnpm/@hono+node-server@2.0.12_hono@4.12.33/node_modules/@hono/node-server/dist/index.d.mts:78`,
   same pattern as `scripts/smoke.ts:229`) and reads the real port back off the listen
   callback's `info.port`, so the test never hardcodes a port; `baseUrl` uses `127.0.0.1`, not
@@ -1305,15 +1330,19 @@ TS surface consumed by later tasks:
   `Anthropic` namespace (`client.d.ts:214`). `Model` is a known-id union widened with
   `(string & {})` (`messages.d.ts:339`), which is why the env-configurable
   `claude-sonnet-5` typechecks; that model id was additionally confirmed live against the API.
-- All 23 dashboard tests pass (`buffer`: 3, `cooldown`: 1, `ingest`: 9, `server`: 8,
+- All 25 dashboard tests pass (`buffer`: 3, `cooldown`: 1, `ingest`: 9, `server`: 10 — up from
+  8, the two new `GET /config` cases added with the on-chain-proof affordances (2026-08-04) —
   `integration.sse`: 2), all 9 express-api tests pass (`reportReceipt`: 3, `intel`: 6), all 4
   hono-api tests pass (`whales`: 4), and all 20 agent tests pass (`run`: 15 across three
   describe blocks, `claude`: 5 covering `truncateBrief`'s word-boundary truncation);
   `examples/fastify-api` and `examples/mcp-server` ship no tests, by design (see
   Testing above). The repo-root `pnpm typecheck` (`package.json:10` → `pnpm -r typecheck`,
   every workspace package plus all six examples) succeeds; the root `pnpm test` suite now runs
-  **144 tests total** (88 under `packages/*` + 56 under `examples/*`, `vitest.config.ts:5`) —
-  one command, not the per-package filters, since the root config's I4 fix (2026-08-04).
+  **154 tests total** (96 under `packages/*` + 58 under `examples/*`, `vitest.config.ts:5`) —
+  up from 144 (88+56) as of the mpp-charge `txHash` fix (2026-08-04): +8 in
+  `packages/core/test/mppCharge.test.ts` (`txHashFromReceiptHeader`'s own suite) and +2 in
+  `examples/dashboard/test/server.test.ts` (`GET /config`) — one command, not the per-package
+  filters, since the root config's I4 fix (2026-08-04).
 - Horizon response shapes for `/assets`, `/order_book`, `/accounts`, and
   `/accounts/{id}/payments` re-confirmed 2026-08-04 by curling live
   `horizon-testnet.stellar.org` — this is where the `balances`/`accounts` vs

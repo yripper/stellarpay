@@ -12,6 +12,18 @@ export type Deps = {
   cooldown?: Cooldown;
   agentFetch?: typeof fetch;
   html: string;
+  /**
+   * Seller's public key (G...), for the "verify on-chain" affordance: every payment in the
+   * feed settles into this account. Unset → GET /config omits it and the dashboard hides the
+   * link entirely (see public/index.html).
+   */
+  payTo?: string;
+  /**
+   * Buyer's public key (G...), for the client-side live balance panel (fetched from Horizon
+   * by the browser, not by this server). Unset → GET /config omits it and the dashboard
+   * hides the panel entirely.
+   */
+  buyerPublic?: string;
 };
 
 /** Pure app factory — `main.ts` binds it to a socket; tests hit it via `app.request`. */
@@ -26,6 +38,11 @@ export function buildApp(deps: Deps): Hono {
 
   app.get("/healthz", (c) => c.json({ ok: true }));
   app.get("/", (c) => c.html(deps.html));
+
+  // Public keys only — safe to expose unauthenticated. The static page (public/index.html)
+  // fetches this on load to learn whether to show the "verify on-chain" link and the live
+  // buyer-balance panel; either field being null hides its affordance entirely.
+  app.get("/config", (c) => c.json({ payTo: deps.payTo ?? null, buyerPublic: deps.buyerPublic ?? null }));
 
   app.post("/ingest", async (c) => {
     if (!authorized(c)) return c.json({ error: "unauthorized" }, 401);

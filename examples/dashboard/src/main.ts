@@ -18,7 +18,13 @@ if (!ingestSecret) {
 
 const html = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
 const port = Number(process.env["PORT"] ?? 4600);
-const app = buildApp({ ingestSecret, agentUrl: process.env["AGENT_URL"] || undefined, html });
+const app = buildApp({
+  ingestSecret,
+  agentUrl: process.env["AGENT_URL"] || undefined,
+  html,
+  payTo: process.env["DEMO_PAYTO"] || undefined,
+  buyerPublic: process.env["DEMO_BUYER_PUBLIC"] || undefined,
+});
 
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`stellarpay dashboard listening on :${info.port}`);

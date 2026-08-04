@@ -109,4 +109,21 @@ describe("dashboard app", () => {
     const res = await app.request("/unleash", { method: "POST" });
     expect(res.status).toBe(202);
   });
+
+  // /config is how the static public/index.html learns the seller/buyer public keys for the
+  // "verify on-chain" link and the client-side Horizon balance panel — both must degrade to
+  // null (not omitted, not an error) when the corresponding env var is unset, so the page can
+  // hide each affordance independently.
+  it("config reports null payTo/buyerPublic when unset", async () => {
+    const res = await makeApp().request("/config");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ payTo: null, buyerPublic: null });
+  });
+
+  it("config echoes payTo/buyerPublic when configured", async () => {
+    const app = makeApp({ payTo: "GSELLERPUBLICKEY", buyerPublic: "GBUYERPUBLICKEY" });
+    const res = await app.request("/config");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ payTo: "GSELLERPUBLICKEY", buyerPublic: "GBUYERPUBLICKEY" });
+  });
 });
