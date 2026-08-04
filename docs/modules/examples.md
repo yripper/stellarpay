@@ -4,8 +4,10 @@
 
 `examples/` holds standalone demo services that showcase the stellarpay SDK end-to-end for
 the hackathon judging round. Each service is its own `@stellarpay-examples/<name>` workspace
-package — `"private": true`, no build step (`tsx` runs `src/main.ts` directly), and its own
-`vitest.config.ts` so `pnpm --filter` works per-package. `examples/dashboard` is the first
+package — `"private": true`, no build step (`tsx` runs `src/main.ts` directly). Four of the
+six (`agent`, `dashboard`, `express-api`, `hono-api`) have their own `vitest.config.ts` so
+`pnpm --filter` works per-package; `fastify-api` and `mcp-server` ship no tests and no
+`vitest.config.ts`, by design (see Testing below). `examples/dashboard` is the first
 and the hub: four paid API services (later tasks) POST payment receipts to its `/ingest`
 endpoint, and it fans them out to browsers over Server-Sent Events (SSE).
 `examples/express-api` is the second and the flagship seller: a "Stellar Intel" API that
@@ -23,7 +25,8 @@ route settles over **mpp-charge**, so across the three paid services both paymen
 an AI agent's `tools/call` is what triggers the on-chain micropayment. One tool
 (`network_status`) is free and three are paid, on one server, over one connection.
 `examples/agent` is the sixth and the only **buyer**: an autonomous agent with a funded
-testnet wallet that shops across all five other services on demand — a Claude tool-use loop
+testnet wallet that shops across four of the other five services on demand (it never buys
+from the dashboard, which it only narrates to) — a Claude tool-use loop
 (`claude-sonnet-5`) picks what a rotating mission needs, `@stellarpay/client` and
 `@stellarpay/mcp` settle each purchase on-chain, and every step is narrated to the dashboard
 as `agent-log` events. It is what the dashboard's UNLEASH button drives, and the one service
@@ -150,13 +153,15 @@ optionally establishes the buyer's USDC trustline fee-free via OZ Channels). Bot
 - `examples/agent/src/narrate.ts` — `Narrator` type + `createNarrator()` (`narrate.ts:6`),
   a thin wrapper that mirrors each line to stdout and posts it as an `agent-log` ingest event.
 - `examples/agent/src/economy.ts` — the shopping list and the narration layer: the `Buyable`
-  type (`economy.ts:11`), `buildEconomy()` (`economy.ts:142`) which assembles the six
-  buyables, `discoverUsdcIssuer()` (`economy.ts:133`), the four exported summarizers
-  (`economy.ts:71,83,102,113`), `describeBuyFailure()` (`economy.ts:124`), and
-  `scriptedTour()` (`economy.ts:213`) — the deterministic fallback lives here, there is no
-  separate `scripted.ts`.
-- `examples/agent/src/claude.ts` — `runClaudeMission()` (`claude.ts:21`), the
-  `@anthropic-ai/sdk` tool-use loop, bounded by `MAX_TURNS = 8` (`claude.ts:5`). No payment
+  type (`economy.ts:11`), `buildEconomy()` (`economy.ts:145`) which assembles the six
+  buyables, `discoverUsdcIssuer()` (`economy.ts:136`), the four exported summarizers
+  (`economy.ts:71,86,105,116`), `describeBuyFailure()` (`economy.ts:127`),
+  `isFailedDelivery()` (`economy.ts:222`, the T1/O1-era payment-succeeded-but-delivery-failed
+  check — see the Gotchas entry), and `scriptedTour()` (`economy.ts:228`) — the deterministic
+  fallback lives here, there is no separate `scripted.ts`.
+- `examples/agent/src/claude.ts` — `runClaudeMission()` (`claude.ts:37`), the
+  `@anthropic-ai/sdk` tool-use loop, bounded by `MAX_TURNS = 8` (`claude.ts:5`), and
+  `truncateBrief()` (`claude.ts:15`), the word-boundary closing-brief truncation. No payment
   code and no HTTP server code — it only calls `Buyable.buy()`.
 - `examples/agent/src/run.ts` — `runMission()` (`run.ts:10`), the pure Claude-or-scripted
   orchestrator (every dependency injected, so `test/run.test.ts` drives it without network),
@@ -164,9 +169,10 @@ optionally establishes the buyer's USDC trustline fee-free via OZ Channels). Bot
 - `examples/agent/src/server.ts` — `buildApp(deps): Hono` (`server.ts:4`), two routes:
   `GET /healthz` and the bearer-guarded `POST /run`.
 - `examples/agent/src/main.ts` — entrypoint and the only place payment SDKs are constructed:
-  `readEnv()`, the narrator, the per-run `createPayingFetch` + MCP client (`main.ts:41,55`),
-  the `running` concurrency flag and `startRun()` (`main.ts:96`), `serve()` (`main.ts:107`),
-  and the 5-second boot run (`main.ts:112`).
+  `readEnv()`, the narrator, the guarded `DEMO_BUYER_SECRET` parse (`main.ts:23-30`), the
+  per-run `createPayingFetch` + MCP client (`main.ts:57,71`), the `running` concurrency flag
+  and `startRun()` (`main.ts:112`), `serve()` (`main.ts:123`), and the 5-second boot run
+  (`main.ts:128`).
 - `examples/agent/test/run.test.ts` — the orchestration contract, `scriptedTour`'s per-item
   isolation, and the purchase summarizers (see Testing below).
 - `scripts/setup-demo.ts` — the demo-identity ops script (repo root, not inside `examples/`).
@@ -204,7 +210,8 @@ come from the `PRICES` constant (`server.ts:8`), both `"$0.02"`:
   and one-line description (`server.ts:66-77`). The first thing a judge curls.
 - `GET /healthz` — free. `200 { ok: true }` (`server.ts:78-80`).
 - `GET /summary/:code/:issuer` — free. Asset teaser from Horizon `/assets`: `code`, `issuer`,
-  `supply`, `holders`, `flags`, `source` (`server.ts:81`).
+  `authorizedSupply`, `holders`, `flags`, `source` (`server.ts:81`). `authorizedSupply` is
+  `balances.authorized` only, not total circulating supply — see the Gotchas entry below.
 - `GET /report/:code/:issuer` — **$0.02, x402**. Everything `/summary` returns plus a
   `market` block with the top of the asset's XLM order book (`server.ts:82`). Paywall key:
   `"GET /report/*"` (`server.ts:26`).
@@ -276,10 +283,10 @@ storefront — this service buys, it never sells:
   background (`server.ts:7-11`). The response never waits for the mission: everything the
   caller learns afterwards arrives on the dashboard feed. Only the dashboard's `/unleash`
   calls this in the demo, with the same shared `INGEST_SECRET`.
-- No route lists what the agent buys — the economy is `examples/agent/src/economy.ts:142`'s
+- No route lists what the agent buys — the economy is `examples/agent/src/economy.ts:145`'s
   `buildEconomy()` and the README's table, not an HTTP index.
 
-Beyond HTTP, the service fires **one run 5 seconds after boot** (`main.ts:112-114`) so the
+Beyond HTTP, the service fires **one run 5 seconds after boot** (`main.ts:128-130`) so the
 dashboard is never empty when judges first open it, and it emits a stream of `agent-log`
 ingest events throughout every run (the `/ingest` contract above).
 
@@ -335,16 +342,21 @@ TS surface consumed by later tasks:
 - `Buyable` (`examples/agent/src/economy.ts:11-21`) — `{ name: string; description: string;
   service: string; price: string; buy: () => Promise<unknown>; summarize: (intel: unknown) =>
   string }`. `service`/`price` live in this table because `PayEvent` carries neither.
-- `buildEconomy(deps): Buyable[]` (`examples/agent/src/economy.ts:142`) — `deps` = `{
+- `buildEconomy(deps): Buyable[]` (`examples/agent/src/economy.ts:145`) — `deps` = `{
   payingFetch: typeof fetch; rawFetch?: typeof fetch; urls: { express, hono, fastify };
   mcpCall?: (tool, args) => Promise<unknown>; buyerPublicKey: string }`.
 - `scriptedTour(economy: Buyable[], narrate: Narrator): Promise<void>`
-  (`examples/agent/src/economy.ts:213`) — the deterministic fallback; never throws per item.
-- `discoverUsdcIssuer(rawFetch?): Promise<string>` (`examples/agent/src/economy.ts:133`).
+  (`examples/agent/src/economy.ts:228`) — the deterministic fallback; never throws per item.
+- `isFailedDelivery(intel: unknown): boolean` (`examples/agent/src/economy.ts:222`) — true for
+  a bare string or an `{ error }` payload; used by `scriptedTour` to pick the ✔/⚠ narration
+  marker (see the O1 gotcha below).
+- `discoverUsdcIssuer(rawFetch?): Promise<string>` (`examples/agent/src/economy.ts:136`).
 - `summarizeAssetReport` / `summarizeAccount` / `summarizeWhales` / `summarizeFeeStats`
-  (`examples/agent/src/economy.ts:71,83,102,113`) and `describeBuyFailure`
-  (`economy.ts:124`) — all `(unknown) => string`, all pure, all unit-tested.
-- `runClaudeMission(opts): Promise<void>` (`examples/agent/src/claude.ts:21`) — `opts` = `{
+  (`examples/agent/src/economy.ts:71,86,105,116`) and `describeBuyFailure`
+  (`economy.ts:127`) — all `(unknown) => string`, all pure, all unit-tested.
+- `truncateBrief(text: string, maxLen?: number): string` (`examples/agent/src/claude.ts:15`) —
+  pure word-boundary truncation with an ellipsis; the closing brief's default `maxLen` is 400.
+- `runClaudeMission(opts): Promise<void>` (`examples/agent/src/claude.ts:37`) — `opts` = `{
   apiKey: string; model: string; mission: string; economy: Buyable[]; narrate: Narrator }`.
 - `runMission(deps): Promise<MissionResult>` (`examples/agent/src/run.ts:10`) — `deps` = `{
   mission: string; narrate: Narrator; runClaude: (() => Promise<void>) | undefined;
@@ -401,19 +413,20 @@ TS surface consumed by later tasks:
 - `horizonJson(url, f)` (`examples/express-api/src/intel.ts:15-20`) — the single point where
   Horizon status codes are mapped: `404` passes through as `404`, any other non-OK becomes
   `502`, `200` parses the body through `asRec()`. All three fetchers funnel through it.
-- `assetSupply(rec)` / `assetHolders(rec)` (`examples/express-api/src/intel.ts:33-40`) — read
+- `assetSupply(rec)` / `assetHolders(rec)` (`examples/express-api/src/intel.ts:37-44`) — read
   the flat pre-Horizon-2.x `amount`/`num_accounts` fields first, then fall back to the shape
-  live Horizon actually returns today: `balances.authorized` and `accounts.authorized`. See
-  the gotcha below.
-- `fetchAssetReport(code, issuer, f)` (`examples/express-api/src/intel.ts:61-83`) — calls
-  `fetchAssetSummary` first and short-circuits on any non-200 (`intel.ts:62-63`), then
-  derives `credit_alphanum4`/`credit_alphanum12` from the code's length (`intel.ts:64`) and
+  live Horizon actually returns today: `balances.authorized` and `accounts.authorized`.
+  `assetSupply` feeds the route body's `authorizedSupply` field (not `supply` — see the T1
+  rename in the gotcha below).
+- `fetchAssetReport(code, issuer, f)` (`examples/express-api/src/intel.ts:65-87`) — calls
+  `fetchAssetSummary` first and short-circuits on any non-200 (`intel.ts:66-67`), then
+  derives `credit_alphanum4`/`credit_alphanum12` from the code's length (`intel.ts:68`) and
   merges the order book's top bid/ask into a `market` block. An order-book fetch that fails
   degrades to `{ note: "order book unavailable" }` rather than failing the paid request
-  (`intel.ts:77-81`).
-- `fetchAccountDeepDive(account, f)` (`examples/express-api/src/intel.ts:85-109`) — two
+  (`intel.ts:81-85`).
+- `fetchAccountDeepDive(account, f)` (`examples/express-api/src/intel.ts:89-113`) — two
   Horizon calls. Only the `/accounts` call gates the status; a failing `/payments` call
-  degrades to an empty `recentPayments` array (`intel.ts:90-97`).
+  degrades to an empty `recentPayments` array (`intel.ts:94-101`).
 - `buildApp(env)` (`examples/express-api/src/server.ts:10-84`) — builds the reporter
   (`server.ts:11-15`), then the `StellarpayConfig` with `rpcUrl` wired explicitly from
   `NETWORKS["stellar:testnet"].rpcUrl` (`server.ts:21`) and `facilitatorApiKey`/
@@ -494,55 +507,64 @@ TS surface consumed by later tasks:
   `[agent] <message>` and fires the same string at `/ingest` as `{ kind: "agent-log" }`.
   Inherits the reporter's fire-and-forget contract wholesale: a down dashboard costs the run
   nothing.
-- `buildEconomy(deps)` (`examples/agent/src/economy.ts:142-211`) — returns the four HTTP
+- `buildEconomy(deps)` (`examples/agent/src/economy.ts:145-213`) — returns the four HTTP
   buyables unconditionally and the two MCP buyables **only when `deps.mcpCall` is supplied**
-  (`economy.ts:187-210`). Each `buy()` is a closure over its own URL/arguments, so every tool
-  Claude sees takes no input — the `input_schema` is an empty object (`claude.ts:31`).
-  `buy_asset_report` calls `discoverUsdcIssuer` inside `buy()` (`economy.ts:150`), so the
+  (`economy.ts:192-211`). Each `buy()` is a closure over its own URL/arguments, so every tool
+  Claude sees takes no input — the `input_schema` is an empty object (`claude.ts:48`).
+  `buy_asset_report` calls `discoverUsdcIssuer` inside `buy()` (`economy.ts:165`), so the
   issuer is resolved per purchase, not per process.
-- `discoverUsdcIssuer(rawFetch)` (`examples/agent/src/economy.ts:133-140`) — one free
+- `discoverUsdcIssuer(rawFetch)` (`examples/agent/src/economy.ts:136-143`) — one free
   Horizon `GET /assets?asset_code=USDC&limit=1`, reading `_embedded.records[0].asset_issuer`.
   Throws (rather than substituting a placeholder) when Horizon is unreachable or returns no
   USDC record, so the failure is narrated instead of buying a report on a made-up asset.
-- `describeIntel(intel, describe)` (`examples/agent/src/economy.ts:62-69`) — the shared front
+- `describeIntel(intel, describe)` (`examples/agent/src/economy.ts:62-68`) — the shared front
   of all four summarizers and the reason narration cannot lie: an `intel` that is a bare
   string (an MCP `isError` message) or carries an `error` field is quoted verbatim, and only
   a payload with neither reaches the field-reading `describe` callback. Without it, an
   `{"error":"horizon_unavailable"}` body would narrate as "wallet holds no balances" — a
   fabricated claim about a purchase that returned nothing.
-- `summarizeWhales(intel)` (`examples/agent/src/economy.ts:102-111`) — returns `no native
+- `summarizeWhales(intel)` (`examples/agent/src/economy.ts:105-113`) — returns `no native
   payments found in <window>` when `count` is `0`/absent **or** `largestXlm` is absent,
   rather than printing `null`. It reads the post-Task-5 `{ window, count, largestXlm }`
   envelope; there is no `thresholdXlm` field to read anywhere anymore (see the hono-api
   gotcha above).
-- `describeBuyFailure(err)` (`examples/agent/src/economy.ts:124-127`) — the one place a
+- `describeBuyFailure(err)` (`examples/agent/src/economy.ts:127-130`) — the one place a
   `SpendLimitExceeded` (`packages/client/src/limits.ts:5`) is distinguished from an ordinary
   failure, so a refused purchase narrates as the guardrail working rather than as a broken
-  demo. Used by both run modes (`economy.ts:219`, `claude.ts:76`).
-- `scriptedTour(economy, narrate)` (`examples/agent/src/economy.ts:213-222`) — iterates the
+  demo. Used by both run modes (`economy.ts:239`, `claude.ts:93`).
+- `isFailedDelivery(intel)` (`examples/agent/src/economy.ts:222-225`) — true for a bare string
+  or an `{ error }` payload, i.e. exactly the two shapes `describeIntel` treats as an error
+  rather than data. `scriptedTour` uses it to pick ✔ (paid and delivered) vs. ⚠ (paid, seller
+  answered with an error) — see the O1 gotcha below.
+- `scriptedTour(economy, narrate)` (`examples/agent/src/economy.ts:228-242`) — iterates the
   economy sequentially with a per-item `try/catch`, so one dead seller costs exactly one
   purchase. Sequential on purpose: concurrent buys would interleave the narration into
   nonsense and race the spend tracker's reservations.
-- `runClaudeMission(opts)` (`examples/agent/src/claude.ts:21-84`) — builds one no-argument
-  tool per `Buyable` (`claude.ts:28-32`), then loops up to `MAX_TURNS = 8`. Continues only
+- `truncateBrief(text, maxLen)` (`examples/agent/src/claude.ts:15-21`) — returns `text`
+  unchanged at or under `maxLen`; otherwise slices to `maxLen`, backs up to the last space
+  (`lastIndexOf(" ")`) so a word is never cut in half, and appends `…`. Falls back to a hard
+  cut only when there is no space to back up to at all (one word longer than `maxLen`).
+- `runClaudeMission(opts)` (`examples/agent/src/claude.ts:37-101`) — builds one no-argument
+  tool per `Buyable` (`claude.ts:45-49`), then loops up to `MAX_TURNS = 8`. Continues only
   while `stop_reason === "tool_use"` **and** at least one `tool_use` block is present
-  (`claude.ts:54`); every other stop reason ends the run with a narrated brief. A failed
-  purchase becomes an `is_error: true` `tool_result` (`claude.ts:78`), so Claude learns the
+  (`claude.ts:70`); every other stop reason ends the run with a narrated, word-boundary-
+  truncated brief (`claude.ts:75`, via `truncateBrief`). A failed purchase becomes an
+  `is_error: true` `tool_result` (`claude.ts:95`), so Claude learns the
   refusal and can adapt instead of the whole mission collapsing.
 - `runMission(deps)` (`examples/agent/src/run.ts:10-35`) — the demo's never-fizzle guarantee
   in 25 lines, and the only file in this service with a test suite. `runClaude` failing for
   *any* reason falls through to `runScripted` (`run.ts:24-26`); `runScripted` failing is
   narrated and swallowed (`run.ts:31-33`). It cannot throw, which is what lets `startRun`'s
   bookkeeping stay simple.
-- `connectMcp(payingFetch)` (`examples/agent/src/main.ts:41-53`) — connects a `Client` over
+- `connectMcp(payingFetch)` (`examples/agent/src/main.ts:57-69`) — connects a `Client` over
   `payingHttpTransport` and wraps it with `wrapPaidMcpClient`. Returns `undefined` on a
   connection failure after narrating it, which is what makes the MCP buyables optional in
   `buildEconomy` rather than guaranteed-to-fail.
-- `oneRun()` (`examples/agent/src/main.ts:55-94`) — one mission: rotate `MISSIONS`
-  (`main.ts:56-57`), build a **fresh** `createPayingFetch` so the spend limits reset per run
-  (`main.ts:60-73`), connect MCP, build the economy, run the mission, then close the MCP
-  client with `.catch(() => undefined)` (`main.ts:93`).
-- `startRun()` (`examples/agent/src/main.ts:96-105`) — the concurrency gate. Sets `running`
+- `oneRun()` (`examples/agent/src/main.ts:71-110`) — one mission: rotate `MISSIONS`
+  (`main.ts:72-73`), build a **fresh** `createPayingFetch` so the spend limits reset per run
+  (`main.ts:76-89`), connect MCP, build the economy, run the mission, then close the MCP
+  client with `.catch(() => undefined)` (`main.ts:109`).
+- `startRun()` (`examples/agent/src/main.ts:112-121`) — the concurrency gate. Sets `running`
   synchronously before the async work starts, and clears it in a `.finally` behind a
   `.catch` that narrates the crash — so no failure mode can leave `/run` answering `409`
   forever.
@@ -555,22 +577,32 @@ TS surface consumed by later tasks:
   `void close()` would leave a rejected teardown promise unhandled, and it fires outside the
   `try/catch`), then `await server.connect(transport)` and
   `await transport.handleRequest(req, res, req.body)`.
-- `main()` (`scripts/setup-demo.ts:75-134`) — loads `.env` the same guarded way as
+- `main()` (`scripts/setup-demo.ts:76-147`) — loads `.env` the same guarded way as
   `scripts/smoke.ts:39-44`; reads `SMOKE_BUYER_SECRET`/`SMOKE_PAYTO` with `DEMO_*` fallbacks
-  (`setup-demo.ts:76-77`); friendbot-funds the buyer and payTo accounts if either doesn't yet
-  exist (`setup-demo.ts:85-95`); if `DEMO_USDC_ISSUER` is set and the buyer lacks that
+  (`setup-demo.ts:77-78`); friendbot-funds the buyer and payTo accounts if either doesn't yet
+  exist (`setup-demo.ts:86-96`); if `DEMO_USDC_ISSUER` is set and the buyer lacks that
   trustline, builds+signs a `ChangeTrust` and submits it via `submitViaChannels`
-  (`setup-demo.ts:97-114`, `.setTimeout(30)` at `setup-demo.ts:68` — Channels rejects longer
-  timebounds); prints the balances table (`setup-demo.ts:116-120`, ✅/⚠️ per account existence,
+  (`setup-demo.ts:99-125`, `.setTimeout(30)` at `setup-demo.ts:69` — Channels rejects longer
+  timebounds); prints the balances table (`setup-demo.ts:127-131`, ✅/⚠️ per account existence,
   `no USDC trustline` distinguished from a real `0.0000000 USDC (issuer…)` line so a
   trustline-but-empty account never reads as "missing"); closes with either manual
-  faucet/trustline instructions or `All set — run \`pnpm smoke\`` (`setup-demo.ts:122-133`).
-  Never prints a secret — accounts are referenced only by public key throughout.
-- `establishTrustline(buyer, issuer)` (`scripts/setup-demo.ts:61-73`) — its one call site
-  (`setup-demo.ts:104-113`) is wrapped in `try/catch`, the same degrade-gracefully pattern as
+  faucet/trustline instructions or `All set — run \`pnpm smoke\`` (`setup-demo.ts:133-144`),
+  then **exits 1 if `establishTrustline` failed, 0 otherwise** (`setup-demo.ts:146`, added by
+  commit `24fac87` — before that fix, a genuine trustline failure still printed an actionable
+  message but `main()` fell through to a normal `0` exit, so a caller chaining this script
+  — `pnpm setup-demo && pnpm smoke`, a deploy hook — would see success after a real failure;
+  skipping the trustline step, because it's not env-gated or already present, is still success
+  and still exits 0). Never prints a secret — accounts are referenced only by public key
+  throughout.
+- `establishTrustline(buyer, issuer)` (`scripts/setup-demo.ts:61-74`) — its one call site
+  (`setup-demo.ts:110-124`) is wrapped in `try/catch`, the same degrade-gracefully pattern as
   `scripts/smoke.ts`'s `runLeg` (`smoke.ts:194-209`): a failed Channels submission prints an
-  actionable message and lets the balances table + manual-fallback guidance still render,
-  rather than crashing the whole script on a raw stack trace. See the Channels gotcha below —
+  actionable message, sets the `trustlineFailed` flag `main()` exits on, and lets the balances
+  table + manual-fallback guidance still render, rather than crashing the whole script on a
+  raw stack trace. `establishTrustline`'s own Horizon fetch (`setup-demo.ts:63-64`) also now
+  checks `res.ok` the same way `loadAccount` does (also added by `24fac87`), so a non-200
+  there surfaces as an actionable Horizon error instead of a cryptic parse failure. See the
+  Channels gotcha below —
   this path was exercised live and does fail in practice.
 
 ## Dependencies
@@ -681,7 +713,7 @@ TS surface consumed by later tasks:
 ## Gotchas & Invariants
 
 - **`scripts/setup-demo.ts`'s OZ Channels trustline path failed live, three-for-three, on
-  the day this was written (2026-08-04).** `establishTrustline` (`setup-demo.ts:61-73`) builds
+  the day this was written (2026-08-04).** `establishTrustline` (`setup-demo.ts:61-74`) builds
   a valid `ChangeTrust` XDR — independently confirmed by submitting the byte-identical
   transaction directly via `rpc.Server.sendTransaction` (bypassing Channels entirely), which
   returned `status: "SUCCESS"` with a real hash. But routing the same signed XDR through
@@ -694,9 +726,11 @@ TS surface consumed by later tasks:
   `submitViaChannels` already handles by falling back to a direct self-paid submission —
   `channels.ts:39`), so this is not a case the shared helper is expected to route around; the
   cause is presumed to be Channels' testnet relay specifically, not this script's transaction
-  construction. `establishTrustline`'s one call site (`setup-demo.ts:104-113`) is wrapped in
-  `try/catch` so this degrades to an actionable console message instead of a raw crash — see
-  the Testing section below for the exact reproduction. Re-check this against the live service
+  construction. `establishTrustline`'s one call site (`setup-demo.ts:110-124`) is wrapped in
+  `try/catch` so this degrades to an actionable console message — and, since commit `24fac87`,
+  a non-zero exit code (`setup-demo.ts:146`) — instead of a raw crash or a false-success exit
+  code. See the Testing section below for the exact reproduction. Re-check this against the
+  live service
   before relying on the trustline auto-establishment path for a real deploy; the manual
   `stellar tx new change-trust` fallback the failure message points to is confirmed to exist
   (`stellar --version`: `27.0.0`) and does work (that's how the live verification below
@@ -759,12 +793,27 @@ TS surface consumed by later tasks:
   /summary/ZZQQ/GA22K…`) correctly → `404`. Mildly misleading to a caller; a deliberate
   simplification, not an oversight.
 - **Live Horizon `/assets` records have no `amount` or `num_accounts` field.** Horizon 2.x
-  reports supply and holder count as `balances.authorized` (a string) and
-  `accounts.authorized` (a number). `assetSupply`/`assetHolders` (`intel.ts:33-40`) read the
+  reports authorized supply and holder count as `balances.authorized` (a string) and
+  `accounts.authorized` (a number). `assetSupply`/`assetHolders` (`intel.ts:37-44`) read the
   flat legacy names first and fall back to the nested ones, so both shapes resolve. Reading
-  only the flat names — as an earlier draft did — yields `supply: "—", holders: null` against
-  live Horizon, i.e. a paid route that returns nothing of value. Confirmed 2026-08-04 by
+  only the flat names — as an earlier draft did — yields `authorizedSupply: "—", holders:
+  null` against live Horizon, i.e. a paid route that returns nothing of value. Confirmed
+  2026-08-04 by
   curling `https://horizon-testnet.stellar.org/assets?asset_code=USDC`.
+- **`/summary`/`/report`'s asset field is `authorizedSupply`, not `supply` — a deliberate
+  rename, not a typo.** `assetSupply` (`intel.ts:37-39`) only ever reads `balances.authorized`
+  (or the pre-2.x flat `amount`); a live `/assets` record also carries `balances.unauthorized`
+  plus three sibling top-level amounts (`claimable_balances_amount`, `liquidity_pools_amount`,
+  `contracts_amount`) that this function never sums. `/report/*` is a **paid** route
+  (`$0.02`), so naming a partial figure `supply` would sell a number under a name that
+  promises more than it delivers. Renamed 2026-08-04; the consumers updated in the same
+  change were `examples/express-api/test/intel.test.ts`, `examples/express-api/README.md`,
+  `examples/express-api/src/server.ts`'s index-route description, and
+  `examples/agent/src/economy.ts`'s `summarizeAssetReport` (`economy.ts:71-83`), which now
+  narrates "authorized supply" rather than "supply". `examples/mcp-server/src/intel.ts`'s
+  `asset_stats` tool has the identical `balances.authorized`-only shape and the identical
+  `supply` field name (`mcp-server/src/intel.ts:72`) but was **not** renamed — out of scope
+  for this pass, flagged here rather than silently left inconsistent.
 - **The mpp-charge receipt carries no `payer` or `txHash`.** `packages/core/src/schemes/
   mppCharge.ts:51-54` builds it from the `Payment-Receipt` response header and sets only
   `scheme`/`route`/`network`/`amount`/`asset`/`raw`/`timestamp`; the payer and transaction
@@ -970,8 +1019,8 @@ TS surface consumed by later tasks:
   (`packages/mcp/src/client.ts:36-48`), which takes **no** limits argument — the MCP
   server's paywall is a JSON-RPC `-32042` inside a `200` HTTP response, so `payingFetch`
   never sees a `402` and never consults the tracker. Consequences, all deliberate: the
-  budget line reads "per paid HTTP call" (`main.ts:84`), `paidCount` counts `PayEvent`s and
-  is therefore an **HTTP** count (`main.ts:66-69,92`), and a run whose HTTP budget is
+  budget line reads "per paid HTTP call" (`main.ts:100`), `paidCount` counts `PayEvent`s and
+  is therefore an **HTTP** count (`main.ts:82-85,108`), and a run whose HTTP budget is
   exhausted can still buy both MCP tools. Confirmed live 2026-08-04 (see Verified Against).
   Closing the gap means a limits-aware MCP client leg in `packages/mcp`, not a patch here.
 - **`PayEvent` carries no amount** (`packages/client/src/events.ts:2-7`), so every dollar
@@ -980,11 +1029,12 @@ TS surface consumed by later tasks:
   and not here makes the agent narrate a stale number — there is no compile-time link
   between the two, and nothing at runtime cross-checks them.
 - **Narration must never describe an unsuccessful purchase as data.** `describeIntel`
-  (`economy.ts:62-69`) is the guard; every summarizer goes through it, and the em-dash
-  `shown()` helper (`economy.ts:29`) keeps a missing field from rendering as `undefined` or
+  (`economy.ts:62-68`) is the guard; every summarizer goes through it, and the em-dash
+  `shown()` helper (`economy.ts:30`) keeps a missing field from rendering as `undefined` or
   `null`. This is not stylistic: the feed is the demo's voice-over, and a fabricated number
-  on it is the single worst failure this service can produce. Four of the thirteen tests
-  exist purely to pin this down.
+  on it is the single worst failure this service can produce. Four of `run.test.ts`'s fifteen
+  tests exist purely to pin this down (plus two more, added for O1, pinning down the ✔/⚠
+  marker so a settled-but-undelivered purchase isn't narrated as a clean success either).
 - **A run that hits a spend limit is a success, not an error.** `SpendLimitExceeded` is
   thrown from inside `payingFetch` (x402 leg: `packages/client/src/index.ts:143`; MPP leg:
   `packages/client/src/mppLeg.ts`'s `onChallenge` gate) and caught per item by both run
@@ -995,21 +1045,28 @@ TS surface consumed by later tasks:
   `tool_use` blocks. The spend limits are the second line of defence, not the first.
 - **`stop_reason` has six values, not two.** The installed SDK types it as `'end_turn' |
   'max_tokens' | 'stop_sequence' | 'tool_use' | 'pause_turn' | 'refusal'`
-  (`@anthropic-ai/sdk/resources/messages/messages.d.ts:430`). `claude.ts:54` continues only
+  (`@anthropic-ai/sdk/resources/messages/messages.d.ts:430`). `claude.ts:70` continues only
   on `'tool_use'` **and** a non-empty `tool_use` block list, and treats every other value as
   end-of-mission — including `'pause_turn'`, which in a server-tool workflow would mean
   "send this back to continue". This service uses no server tools, so ending is correct;
   adding one would make that branch wrong.
 - **A run must never be able to leave `POST /run` stuck at `409`.** `startRun`
-  (`main.ts:96-105`) sets `running` synchronously, and clears it in `.finally()` behind a
+  (`main.ts:112-121`) sets `running` synchronously, and clears it in `.finally()` behind a
   `.catch()`. `runMission` is additionally total by construction (`run.ts:10-35`, it catches
   both paths), so the `.catch` is a backstop for the wiring around it — `connectMcp`, the
   economy build, the MCP `close()` — not for mission failures.
 - **The MCP buyables are optional at run time.** `buildEconomy` includes them only when
-  `mcpCall` is supplied (`economy.ts:187-210`), and `connectMcp` returns `undefined` after
-  narrating a connection failure (`main.ts:47-50`). A dead mcp-server therefore costs two
+  `mcpCall` is supplied (`economy.ts:192-211`), and `connectMcp` returns `undefined` after
+  narrating a connection failure (`main.ts:63-66`). A dead mcp-server therefore costs two
   buyables, not the whole run. Deliberate deviation from the plan's `mcpCall`-is-required
   signature; spec §8's "the button never fizzles" is the reason.
+- **✔ means "paid and delivered", not just "paid" (O1 fix).** `scriptedTour` used to prefix
+  *every* settled purchase with ✔, including an MCP `isError` result — the payment happened,
+  but `✔ Paid $0.01 … — the seller answered: fetch failed` reads as broken on camera. It now
+  checks `isFailedDelivery(intel)` (`economy.ts:222-225`) and marks that case ⚠ instead
+  (`economy.ts:236-237`). `runClaudeMission`'s equivalent narration line (`claude.ts:90`) was
+  **not** changed by this fix — out of scope for this pass (O1 named `economy.ts` only), so
+  the same isError-after-a-successful-payment case still narrates ✔ on the Claude-driven path.
 - **The buyer's wallet signs real testnet transactions and pays for its own reads.** Two of
   the six buys are deep-dives on the agent's *own* account, so the balances it narrates
   visibly shrink across a demo session as it spends. That is a feature on camera; it also
@@ -1019,7 +1076,7 @@ TS surface consumed by later tasks:
   is required (`env.ts:25-32`) because it is also the bearer token guarding `POST /run` — the
   endpoint that spends money. `DASHBOARD_URL` stays optional: an agent that cannot narrate
   still buys.
-- **Missions rotate per *process*, not per day.** `missionCounter` (`main.ts:22`) is a
+- **Missions rotate per *process*, not per day.** `missionCounter` (`main.ts:38`) is a
   module-level integer, so a restart starts back at mission 1 — including the boot run.
   Consecutive presses of UNLEASH do differ, which is what the spec asked for.
 
@@ -1087,10 +1144,13 @@ TS surface consumed by later tasks:
   shape; an empty asset record set → `404`; the report's summary + order-book merge; a
   Horizon `404` passed through; a Horizon `500` → `502`.
 - Run: `pnpm --filter @stellarpay-examples/dashboard test` and `pnpm --filter
-  @stellarpay-examples/express-api test`. `pnpm test` from repo root covers `packages/*`
-  only — the root `vitest.config.ts` glob is scoped to `packages/**`, so `examples/*` tests
-  run exclusively via their own per-package `vitest.config.ts`. A deliberate choice; adding
-  a new example does **not** extend the root suite, so run its filter explicitly.
+  @stellarpay-examples/express-api test` for one service at a time, or `pnpm test` from the
+  repo root, which now runs everything: the root `vitest.config.ts` glob covers both
+  `packages/**/*.{test,spec}.ts` **and** `examples/**/*.{test,spec}.ts` (`vitest.config.ts:5`,
+  changed 2026-08-04 — it previously covered `packages/**` only, so `pnpm test` silently
+  never ran any `examples/*` test). Adding a new example's tests now extends the root suite
+  automatically, with no config change required, as long as they live under a `test/`
+  directory matching that glob.
 - Typecheck: `pnpm --filter @stellarpay-examples/<name> typecheck` (or `pnpm typecheck`
   from repo root, which runs `pnpm -r typecheck` across every workspace package).
 - **No server-level test file exists for `examples/express-api`** — the brief's file list
@@ -1156,26 +1216,36 @@ TS surface consumed by later tasks:
   paid calls through `wrapPaidMcpClient(client, { secret, network: "stellar:testnet", rpcUrl })`
   over `payingHttpTransport("http://localhost:4604/mcp", fetch)` from `@stellarpay/mcp` and read
   the dashboard's `/events` stream to confirm the receipts arrived.
-- `examples/agent/test/run.test.ts` — 13 tests in three groups, all offline. **`runMission`**
+- `examples/agent/test/run.test.ts` — 15 tests in three groups, all offline. **`runMission`**
   (4, the brief's TDD set): the Claude path is used and the scripted tour is never touched
   when Claude succeeds; a throwing `runClaude` falls back and says "scripted"; a missing
   `runClaude` skips Claude entirely; and a throwing `runScripted` still resolves
   `{ mode: "scripted" }` with a narrated "failed" line rather than rejecting.
-  **`scriptedTour`** (2): the exact narration sequence for two successful buys (asserted as a
-  whole array, so a wording regression is caught), and that a rejecting first item is narrated
-  while the second item is still bought. **Purchase summaries** (7): real numbers read out of
-  asset-report/account/whale/fee payloads; a missing order book described as missing rather
-  than priced; an empty whale window reported as empty rather than as a `null` largest
-  payment; and a seller `error` field or a bare string quoted verbatim instead of being
-  described as data.
-- Run: `pnpm --filter @stellarpay-examples/agent test`. Same root-suite caveat as the other
-  examples — `pnpm test` from repo root never includes `examples/*`.
+  **`scriptedTour`** (4): the exact narration sequence for two successful buys (asserted as a
+  whole array, so a wording regression is caught); that a rejecting first item is narrated
+  while the second item is still bought; and, added for O1, that a settled purchase whose
+  intel is a bare string or carries an `error` field narrates ⚠ rather than ✔ (the two
+  `isFailedDelivery` shapes). **Purchase summaries** (7): real numbers read out of
+  asset-report/account/whale/fee payloads (now `authorizedSupply`, per the T1 rename); a
+  missing order book described as missing rather than priced; an empty whale window reported
+  as empty rather than as a `null` largest payment; and a seller `error` field or a bare
+  string quoted verbatim instead of being described as data.
+- `examples/agent/test/claude.test.ts` — 5 tests for `truncateBrief` (added for T2), all pure:
+  text at/under the limit is unchanged; truncation backs up to the last word boundary rather
+  than cutting mid-word, and appends `…`; a single word longer than the limit still gets an
+  ellipsis (no space to back up to); and a realistic 400+-char sentence at the production
+  default truncates exactly on a word boundary.
+- Run: `pnpm --filter @stellarpay-examples/agent test`, or `pnpm test` from the repo root,
+  which now includes every `examples/*` suite (I4 fix, `vitest.config.ts:5`).
 - Typecheck: `pnpm --filter @stellarpay-examples/agent typecheck` (or `pnpm typecheck` from
   repo root).
-- **No test covers `runClaudeMission`, `buildEconomy`, `connectMcp`, or `buildApp`** — they are
-  SDK wiring, and the Anthropic loop in particular has no seam that would make a mocked test
-  worth more than the live run recorded below. `POST /run`'s 202/409/401 behavior is verified
-  live, not by a `test/server.test.ts`; the same gap `examples/express-api` has.
+- **No test covers `runClaudeMission` end-to-end, `buildEconomy`, `connectMcp`, or
+  `buildApp`** — they are SDK wiring, and the Anthropic loop in particular has no seam that
+  would make a mocked test worth more than the live run recorded below.
+  `truncateBrief` (extracted specifically so it has one, `claude.ts:15-21`) is the one piece
+  of `claude.ts` logic under test; the surrounding tool-use loop is not. `POST /run`'s
+  202/409/401 behavior is verified live, not by a `test/server.test.ts`; the same gap
+  `examples/express-api` has.
 - Live verification of `examples/agent` is the whole-economy rehearsal: run all six services
   locally (dashboard `:4600`, express `:4601`, hono `:4602`, fastify `:4603`, mcp `:4604`,
   agent `:4605`), each with its own `.env` sharing one `INGEST_SECRET` and with the dashboard's
@@ -1235,14 +1305,15 @@ TS surface consumed by later tasks:
   `Anthropic` namespace (`client.d.ts:214`). `Model` is a known-id union widened with
   `(string & {})` (`messages.d.ts:339`), which is why the env-configurable
   `claude-sonnet-5` typechecks; that model id was additionally confirmed live against the API.
-- All 21 dashboard tests pass (`buffer`: 3, `cooldown`: 1, `ingest`: 9, `server`: 8), all
-  9 express-api tests pass (`reportReceipt`: 3, `intel`: 6), both hono-api tests pass
-  (`whales`: 2), and all 13 agent tests pass (`run`: 13 across three describe blocks);
+- All 23 dashboard tests pass (`buffer`: 3, `cooldown`: 1, `ingest`: 9, `server`: 8,
+  `integration.sse`: 2), all 9 express-api tests pass (`reportReceipt`: 3, `intel`: 6), all 4
+  hono-api tests pass (`whales`: 4), and all 20 agent tests pass (`run`: 15 across three
+  describe blocks, `claude`: 5 covering `truncateBrief`'s word-boundary truncation);
   `examples/fastify-api` and `examples/mcp-server` ship no tests, by design (see
-  Testing above). The repo-root `pnpm typecheck` (`pnpm -r typecheck`, every package plus all
-  six examples; the root itself declares no `typecheck` script) succeeds; the root `pnpm test`
-  suite (`packages/*`, 88 tests) is unaffected — `examples/*` tests run only via their own
-  per-package filter, never the root suite.
+  Testing above). The repo-root `pnpm typecheck` (`package.json:10` → `pnpm -r typecheck`,
+  every workspace package plus all six examples) succeeds; the root `pnpm test` suite now runs
+  **144 tests total** (88 under `packages/*` + 56 under `examples/*`, `vitest.config.ts:5`) —
+  one command, not the per-package filters, since the root config's I4 fix (2026-08-04).
 - Horizon response shapes for `/assets`, `/order_book`, `/accounts`, and
   `/accounts/{id}/payments` re-confirmed 2026-08-04 by curling live
   `horizon-testnet.stellar.org` — this is where the `balances`/`accounts` vs
@@ -1324,7 +1395,10 @@ TS surface consumed by later tasks:
     `dd3338916ad3…`) and `buy_fee_stats` (mpp-charge, `$0.005`) — then ended the loop with
     `stop_reason: "end_turn"` and a written brief. Narrated numbers matched the payloads:
     `USDC supply 99950.0000000 held by 2 accounts; no live XLM order book` and `ledger
-    3966615, capacity usage 0.12 → congestion low`.
+    3966615, capacity usage 0.12 → congestion low`. This transcript predates the same-day
+    T1 `authorizedSupply` rename (see the Gotchas entry above); a re-run today narrates
+    `USDC authorized supply …` instead — not re-verified live after the rename, but the
+    wording change is a direct, mechanical read of the updated `economy.ts:71-83`.
   - **Claude path via the judge's button.** `POST /unleash` → `202 {"status":"unleashed"}`,
     which drove `POST /run`. Mission rotated to 2 (wallet + whales); Claude bought
     `buy_account_deep_dive` (mpp-charge, `$0.02`) and `buy_whale_alerts` (x402, `$0.01`, tx
@@ -1365,7 +1439,8 @@ TS surface consumed by later tasks:
   task (only present via `pnpm.overrides` version pinning, with no root-level import); added as
   a direct root devDependency and confirmed resolvable after `pnpm install`.
   `pnpm typecheck` (`pnpm -r typecheck`, unaffected — `scripts/` isn't in its scope, same as
-  `scripts/smoke.ts`) and `pnpm test` (88 tests, `packages/*` only) both still pass unchanged;
+  `scripts/smoke.ts`) and `pnpm test` (144 tests as of the I4 root-config fix — `packages/*` +
+  `examples/*`, `vitest.config.ts:5`; `scripts/` isn't in its scope either) both still pass;
   `tsc -p tsconfig.scripts.json --noEmit` passes standalone for `scripts/`.
   Five real run categories against Stellar testnet, detailed in the Testing section above:
   already-funded (two ✅ rows, real balances, `All set`), not-yet-funded (`friendbot` line then
@@ -1376,7 +1451,7 @@ TS surface consumed by later tasks:
   this script's transaction construction by submitting the identical signed XDR directly via
   `rpc.Server.sendTransaction`, which returned `status: "SUCCESS"` with a real hash). No secret
   appeared in any run's stdout/stderr — traced every code path that touches `buyerSecret`
-  (`Keypair.fromSecret` at `setup-demo.ts:82`, `tx.sign(buyer)` at `setup-demo.ts:70`) and
+  (`Keypair.fromSecret` at `setup-demo.ts:83`, `tx.sign(buyer)` at `setup-demo.ts:71`) and
   confirmed the `Keypair` object itself is never logged, only `.publicKey()` and `.slice(0,6)`
   prefixes of public keys/issuers/tx hashes; the one caught-error path (`establishTrustline`'s
   `try/catch`) prints only `err.message`, which across `PluginExecutionError` and the plain

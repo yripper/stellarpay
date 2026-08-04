@@ -113,7 +113,7 @@ required var is reported by **name** only.
 | Var | Required | Purpose |
 | --- | --- | --- |
 | `DEMO_PAYTO` | yes | Stellar account (`G…`) that receives payments. Public value. |
-| `DEMO_FACILITATOR_KEY` | no | x402 facilitator bearer token. Free: `curl https://channels.openzeppelin.com/testnet/gen`. |
+| `DEMO_FACILITATOR_KEY` | **yes, in practice** | x402 facilitator bearer token. Free: `curl https://channels.openzeppelin.com/testnet/gen`. Not required by `parseConfig` itself (`packages/core/src/types.ts:54-58`), but the OZ testnet facilitator's `/verify`/`/settle` endpoints require it — this service's only paid route, `GET /alerts/whales`, is x402, so without this var it 401s on every payment attempt instead of settling. |
 | `DASHBOARD_URL` | no | Dashboard base URL, no trailing slash. |
 | `INGEST_SECRET` | no | Bearer secret for the dashboard's `/ingest`. |
 | `PORT` | no | Listen port. Defaults to `4602`. |

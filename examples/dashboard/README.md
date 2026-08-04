@@ -1,17 +1,27 @@
 # stellarpay dashboard
 
-The hub of the stellarpay hackathon demo. Four paid API services (built in later demo tasks)
-POST payment receipts and agent narration lines to this service's `/ingest` endpoint, and it
-fans them out live to any browser watching `/events` over Server-Sent Events (SSE). A big
-"Unleash the agent" button on the dashboard triggers a configured agent service's `/run`
-endpoint, rate-limited by a global cooldown so it can't be hammered during the demo.
+The hub of the stellarpay hackathon demo. Four paid API services (express-api, hono-api,
+fastify-api, mcp-server) POST payment receipts to this service's `/ingest` endpoint; the
+agent narration lines on the same feed come from a fifth service, the buying agent itself
+(`createNarrator`, `examples/agent/src/narrate.ts:7-11`), not from the sellers. The dashboard
+fans everything out live to any browser watching `/events` over Server-Sent Events (SSE). A
+big "Unleash the agent" button on the dashboard triggers the agent service's `/run` endpoint,
+rate-limited by a global cooldown so it can't be hammered during the demo.
 
 Part of the [stellarpay](../../README.md) SDK's `examples/` directory. See
 [`docs/modules/examples.md`](../../docs/modules/examples.md) for the full module doc
 (endpoints, internals, gotchas).
 
-**Screenshot:** _(to be captured from a live run before the demo recording — run `pnpm dev`
-and open http://localhost:4600)_
+**What the page looks like:** a single dark "mission control" page (no build step, no CDN
+assets — see "Dashboard UI" below for the full breakdown). A header strip along the top shows
+running totals (payment count, summed USDC volume) next to the "▶ UNLEASH THE AGENT" button.
+Below it, a live feed grows upward (newest row on top) as receipts and narration arrive: each
+paid-route row shows a timestamp, the paying service, an amber `x402` or cyan `mpp` scheme
+badge, the route or tool name, the amount and asset, a truncated payer address, and — for
+x402 rows only — a "settlement ↗" link to the transaction on stellar.expert; agent narration
+lines render as italic text instead of a receipt row. Live at
+[dashboard-production-5c18.up.railway.app](https://dashboard-production-5c18.up.railway.app),
+or run `pnpm dev` and open `http://localhost:4600` to see it locally.
 
 ## Dashboard UI
 

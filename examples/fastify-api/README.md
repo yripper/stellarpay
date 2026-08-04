@@ -3,8 +3,10 @@
 The third framework in the stellarpay demo lineup, after Express
 ([`examples/express-api`](../express-api)) and Hono ([`examples/hono-api`](../hono-api)). It
 sells one thing: live Stellar testnet fee/congestion stats, paywalled over the **mpp-charge**
-scheme — so between the three example services, both payment schemes stellarpay supports show
-up side by side (x402 on express-api and hono-api, mpp-charge on express-api and here).
+scheme — so between the three example services, two of the three payment schemes stellarpay
+supports (`packages/core/src/types.ts:16`: `x402`, `mpp-charge`, `mpp-channel` — the demo
+does not use `mpp-channel`) show up side by side: x402 on express-api and hono-api,
+mpp-charge on express-api and here.
 
 Registering the paywall on a Fastify app is one `await app.register(...)` call before any
 routes are declared:

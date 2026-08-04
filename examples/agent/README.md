@@ -2,8 +2,9 @@
 
 An AI agent with a funded Stellar wallet, a mission, and a hard budget. Give it a question
 it cannot answer for free and it goes shopping: it buys asset reports, whale alerts, fee
-stats and MCP tool calls from the other five demo services, paying each one on-chain, and
-narrates every purchase to the dashboard feed as it happens.
+stats and MCP tool calls from four of the other five demo services (express-api, hono-api,
+fastify-api, mcp-server — never the dashboard, which it only narrates to), paying each one
+on-chain, and narrates every purchase to the dashboard feed as it happens.
 
 Nobody approves the payments. There is no checkout, no API key, no invoice. The agent
 decides what is worth buying, the paywall answers `402`, and
@@ -20,7 +21,7 @@ dashboard's **▶ UNLEASH THE AGENT** button drives.
 
 | Tool name | Seller | Price | Scheme | What it returns |
 | --- | --- | --- | --- | --- |
-| `buy_asset_report` | [express-api](../express-api) | **$0.02** | x402 | USDC supply, holders, flags, top of the XLM order book |
+| `buy_asset_report` | [express-api](../express-api) | **$0.02** | x402 | USDC authorized supply, holders, flags, top of the XLM order book |
 | `buy_account_deep_dive` | [express-api](../express-api) | **$0.02** | mpp-charge | Its own wallet: balances, flags, 10 most recent payments |
 | `buy_whale_alerts` | [hono-api](../hono-api) | **$0.01** | x402 | The 10 largest recent native-XLM payments on testnet |
 | `buy_fee_stats` | [fastify-api](../fastify-api) | **$0.005** | mpp-charge | Live fee stats + a congestion verdict |

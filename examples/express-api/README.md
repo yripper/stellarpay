@@ -1,7 +1,7 @@
 # Stellar Intel — express-api
 
 The flagship paid API of the stellarpay demo. It sells **live Stellar testnet intelligence**:
-asset supply and holder counts, top-of-book market data, and account forensics — all read
+asset authorized-supply and holder counts, top-of-book market data, and account forensics — all read
 straight from Horizon at request time. Nothing is cached, mocked, or seeded; if the ledger
 moves between two calls, the answers move with it.
 
@@ -24,7 +24,7 @@ Part of the [stellarpay](../../README.md) SDK's `examples/` directory. See
 | --- | --- | --- | --- |
 | `GET /` | free | — | JSON service index: every route, its price, and its scheme |
 | `GET /healthz` | free | — | `{ "ok": true }` |
-| `GET /summary/:code/:issuer` | free | — | Asset teaser: circulating supply, holder count, issuer flags |
+| `GET /summary/:code/:issuer` | free | — | Asset teaser: authorized supply (`balances.authorized`, not total circulating supply), holder count, issuer flags |
 | `GET /report/:code/:issuer` | **$0.02** | `x402` | Everything in `/summary`, plus the live top of the asset's XLM order book |
 | `GET /deep-dive/:account` | **$0.02** | `mpp-charge` | Account balances, subentry count, flags, and its 10 most recent payments |
 
@@ -94,7 +94,7 @@ required var is reported by **name** only.
 | --- | --- | --- |
 | `DEMO_PAYTO` | yes | Stellar account (`G…`) that receives payments. Public value. |
 | `DEMO_MPP_SECRET` | yes | HMAC secret for the mpp-charge scheme. Server-side only. |
-| `DEMO_FACILITATOR_KEY` | no | x402 facilitator bearer token. Free: `curl https://channels.openzeppelin.com/testnet/gen`. |
+| `DEMO_FACILITATOR_KEY` | **yes, for `/report/*`** | x402 facilitator bearer token. Free: `curl https://channels.openzeppelin.com/testnet/gen`. Not required by `parseConfig` itself (`packages/core/src/types.ts:54-58`), but the OZ testnet facilitator's `/verify`/`/settle` endpoints require it — without this var, the x402 route (`GET /report/*`) 401s instead of settling; `GET /deep-dive/*` (mpp-charge) is unaffected. |
 | `DEMO_SPONSOR_SECRET` | no | Sponsor account seed (`S…`). When set, `/deep-dive/*` becomes gas-sponsored (`sponsorGas: true`). |
 | `DASHBOARD_URL` | no | Dashboard base URL, no trailing slash. |
 | `INGEST_SECRET` | no | Bearer secret for the dashboard's `/ingest`. |
