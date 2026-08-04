@@ -28,20 +28,26 @@ RUN mkdir -p /circuits \
 
 FROM node:22-bookworm-slim
 
-ARG STELLAR_CLI_VERSION=23.1.4
+ARG STELLAR_CLI_VERSION=27.0.0
 ENV DEBIAN_FRONTEND=noninteractive
 
-# libdbus-1-3 is NOT optional: the Stellar CLI links against it for its OS secure-store
-# integration, and node:slim omits it. Without it every `stellar` invocation dies with
-# "error while loading shared libraries: libdbus-1.so.3" — which surfaces as an unrelated-looking
-# "identity did not resolve", since the CLI never gets far enough to read the identity at all.
+# Two non-obvious requirements, both asserted at the end of this RUN so a wrong image fails the
+# BUILD in seconds instead of a healthcheck ten minutes later:
+#
+#   * libdbus-1-3 — the Stellar CLI links against it for its OS secure-store integration and
+#     node:slim omits it. Without it every `stellar` invocation dies with "error while loading
+#     shared libraries: libdbus-1.so.3", which surfaces as an unrelated-looking "identity did not
+#     resolve" because the CLI never gets far enough to read an identity at all.
+#   * CLI >= v24 — `spp onboard` derives the privacy keys via `stellar message sign` (SEP-53).
+#     On v23 that fails at boot with "unrecognized subcommand 'message'".
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl libdbus-1-3 \
   && curl -fsSL "https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
      | tar -xz -C /usr/local/bin stellar \
   && chmod +x /usr/local/bin/stellar \
   && apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* \
-  && stellar --version
+  && stellar --version \
+  && stellar message --help >/dev/null
 
 RUN corepack enable
 
