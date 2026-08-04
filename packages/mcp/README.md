@@ -1,4 +1,4 @@
-# @stellarpay/mcp
+# @stellarpay-sdk/mcp
 
 Per-tool-call payments for MCP servers. Server side, `toolPayments(config)` wraps individual
 MCP tool handlers so an unpaid priced call throws the in-protocol MCP payment-required error
@@ -14,7 +14,7 @@ Part of the [stellarpay](../../README.md) SDK.
 Not yet published — see [PUBLISHING.md](../../PUBLISHING.md). Once published:
 
 ```sh
-npm install @stellarpay/mcp @modelcontextprotocol/sdk
+npm install @stellarpay-sdk/mcp @modelcontextprotocol/sdk
 ```
 
 ## Minimal working example — server side (guard a tool)
@@ -22,7 +22,7 @@ npm install @stellarpay/mcp @modelcontextprotocol/sdk
 Taken directly from `test/mcp.test.ts`:
 
 ```ts
-import { toolPayments } from "@stellarpay/mcp";
+import { toolPayments } from "@stellarpay-sdk/mcp";
 
 const payments = toolPayments({
   payTo: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
@@ -50,8 +50,8 @@ Derived from the verified `wrapPaidMcpClient`/`payingHttpTransport` signatures i
 
 ```ts
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { wrapPaidMcpClient, payingHttpTransport } from "@stellarpay/mcp";
-import { createPayingFetch } from "@stellarpay/client";
+import { wrapPaidMcpClient, payingHttpTransport } from "@stellarpay-sdk/mcp";
+import { createPayingFetch } from "@stellarpay-sdk/client";
 
 const payFetch = createPayingFetch({ secret: process.env.AGENT_SECRET!, network: "stellar:testnet" });
 

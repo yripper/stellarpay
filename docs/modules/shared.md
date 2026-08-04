@@ -1,18 +1,18 @@
-# @stellarpay/shared — Gasless Channels Submission (+ Backward-Compat Re-exports)
+# @stellarpay-sdk/shared — Gasless Channels Submission (+ Backward-Compat Re-exports)
 
 ## Purpose
 
 Private, unpublished workspace package. Originally held network presets, price/base-unit
 conversion helpers, and gasless transaction submission via OpenZeppelin Channels — used across
 the stellarpay SDK. The network-preset and price-conversion pieces moved into
-[`@stellarpay/core`](./core.md) (`packages/core/src/internal/`, re-exported as plain utilities
-from `@stellarpay/core`'s public `index.ts`) because three publishable packages (`core`,
+[`@stellarpay-sdk/core`](./core.md) (`packages/core/src/internal/`, re-exported as plain utilities
+from `@stellarpay-sdk/core`'s public `index.ts`) because three publishable packages (`core`,
 `client`, `mcp`) imported them at runtime, and a private/unpublished package can never be a
 runtime `dependency` of a package meant to be `npm install`ed standalone — a `pnpm pack`
-tarball of any of those three would depend on an `@stellarpay/shared@0.1.0` that can never be
+tarball of any of those three would depend on an `@stellarpay-sdk/shared@0.1.0` that can never be
 published, breaking `npm install` for anyone outside this workspace. What remains here directly
 is `submitViaChannels`; the moved utilities are still re-exported from this package's
-`index.ts` so nothing importing `@stellarpay/shared` directly breaks.
+`index.ts` so nothing importing `@stellarpay-sdk/shared` directly breaks.
 
 **`submitViaChannels` is currently dead code** — nothing in this SDK calls it yet. It's
 retained for a future "Plan B" (demo/ops tooling — see the root README's Links section) that is
@@ -24,7 +24,7 @@ exercises it.
 - `src/channels.ts` — Gasless transaction submission via OpenZeppelin Channels with fallback
 - `src/index.ts` — Public re-exports: `submitViaChannels` from `./channels.js`, plus
   `dollarToDecimal`/`decimalToBaseUnits`/`NETWORKS`/`NetworkPreset` re-exported from
-  `@stellarpay/core` for backward compatibility (see Purpose above; the canonical source for
+  `@stellarpay-sdk/core` for backward compatibility (see Purpose above; the canonical source for
   those is now [`docs/modules/core.md`](./core.md))
 
 ## Public Surface
@@ -33,7 +33,7 @@ exercises it.
 
 - `submitViaChannels(opts: { channelsUrl: string; apiKey: string; signedXdr: string; rpcUrl: string; maxPoolRetries?: number; networkPassphrase?: string; _client?; _directSubmit? }): Promise<string>` — Submits a signed envelope via OpenZeppelin Channels with automatic retry on quota exhaustion and fallback to direct self-pay submission on fee limit errors. Returns the transaction hash. Throws if Channels accepts the transaction but returns no hash. XDR submissions must be built with `.setTimeout(30)`. Supports optional custom network passphrase (defaults to Stellar testnet). (`packages/shared/src/channels.ts:22-43`)
 
-### Re-exported from `@stellarpay/core` (backward compatibility)
+### Re-exported from `@stellarpay-sdk/core` (backward compatibility)
 
 - `type NetworkId`, `interface NetworkPreset`, `NETWORKS: Record<NetworkId, NetworkPreset>`,
   `dollarToDecimal`, `decimalToBaseUnits`, `class InvalidPriceError` — see
@@ -44,8 +44,8 @@ exercises it.
 
 - **This package is not a runtime dependency of any publishable package.** `core`, `client`,
   and `mcp` all import `dollarToDecimal`/`decimalToBaseUnits`/`NETWORKS` from
-  `@stellarpay/core` directly, not from here. `@stellarpay/shared` now depends on
-  `@stellarpay/core` (for its re-exports), not the other way around — the reverse of the
+  `@stellarpay-sdk/core` directly, not from here. `@stellarpay-sdk/shared` now depends on
+  `@stellarpay-sdk/core` (for its re-exports), not the other way around — the reverse of the
   dependency direction before this package's utilities moved. Since this package stays
   `"private": true` and is never published, its own dependency direction has no effect on
   what the publishable packages' `npm install` pulls in.
@@ -62,4 +62,4 @@ exercises it.
   Soroban credentials XDR variant 15.1.0 can't parse; see `docs/modules/core.md`'s
   "stellar-sdk version" section) for transaction envelope parsing and RPC communication
 - 2026-08-03 (final fix wave): `price.ts`/`networks.ts` and their tests moved to
-  `@stellarpay/core` (see Purpose above); this doc rewritten to match.
+  `@stellarpay-sdk/core` (see Purpose above); this doc rewritten to match.

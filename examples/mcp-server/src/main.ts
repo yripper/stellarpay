@@ -16,7 +16,7 @@ app.get("/", (_req, res) => {
     name: "Stellar Intel MCP",
     endpoint: "POST /mcp (MCP streamable HTTP)",
     tools: { network_status: "free", ...PRICES },
-    hint: "connect with any MCP client; pay tool charges with @stellarpay/client + @stellarpay/mcp.",
+    hint: "connect with any MCP client; pay tool charges with @stellarpay-sdk/client + @stellarpay-sdk/mcp.",
   });
 });
 app.get("/healthz", (_req, res) => {

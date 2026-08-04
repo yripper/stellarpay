@@ -1,5 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { toolPayments } from "@stellarpay/mcp";
+import { toolPayments } from "@stellarpay-sdk/mcp";
 import { z } from "zod";
 import { accountSummary, assetStats, networkStatus, whaleWatch } from "./intel.js";
 import type { IngestEvent } from "./reportReceipt.js";

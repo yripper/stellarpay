@@ -9,8 +9,8 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@stellarpay/core": "workspace:*",
-    "@stellarpay/fastify": "workspace:*",
+    "@stellarpay-sdk/core": "workspace:*",
+    "@stellarpay-sdk/fastify": "workspace:*",
     "fastify": "^4",
     "tsx": "^4.19.0"
   },

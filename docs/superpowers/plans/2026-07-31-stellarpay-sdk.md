@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build and test the publishable `@stellarpay/*` package family: a unified x402 + MPP paywall core, Express/Hono/Fastify adapters, an auto-paying agent client, and a paid-MCP-tools package.
+**Goal:** Build and test the publishable `@stellarpay-sdk/*` package family: a unified x402 + MPP paywall core, Express/Hono/Fastify adapters, an auto-paying agent client, and a paid-MCP-tools package.
 
 **Architecture:** A framework-agnostic core (`stellarpay(config).handle(Request) → Response | undefined`) routes each configured route to a scheme module. Scheme modules delegate protocol mechanics to verified upstream SDKs: x402 → `@x402/core` + `@x402/stellar`; MPP → `mppx` + `@stellar/mpp`. The client probes a 402, detects the protocol from the response, enforces spend limits, then delegates payment to the matching upstream client. MCP payments are in-protocol via `mppx`'s MCP transport (challenges as `McpError -32042`).
 
@@ -12,7 +12,7 @@
 
 - Node `>=22`, pnpm `>=10`, `"type": "module"` everywhere; TS `strict: true`, `module: "NodeNext"`.
 - `@stellar/stellar-sdk` pinned `15.1.0` via pnpm override (peer of `@stellar/mpp@0.7.1`; do NOT use 16.x here).
-- All publishable packages: version `0.1.0`, `"publishConfig": { "access": "public" }`, scope `@stellarpay`. `packages/shared` is `"private": true` (name `@stellarpay/shared`, bundled by consumers via workspace, never published — publishable packages must NOT import it in public type signatures).
+- All publishable packages: version `0.1.0`, `"publishConfig": { "access": "public" }`, scope `@stellarpay`. `packages/shared` is `"private": true` (name `@stellarpay-sdk/shared`, bundled by consumers via workspace, never published — publishable packages must NOT import it in public type signatures).
 - Conventional commits (`feat:`, `test:`, `docs:`, `chore:`). **Never** add Claude attribution to commits.
 - Never log or serialize secret keys (`S...` seeds, hex seeds, API keys). Zod schemas for all public config. No `any` — use `unknown` and narrow. Doc comments on all public functions.
 - Testnet constants (verified against Stellar docs / installed packages): facilitator `https://channels.openzeppelin.com/x402/testnet` (mainnet: `https://channels.openzeppelin.com/x402`), RPC `https://soroban-testnet.stellar.org` (mainnet `https://soroban-rpc.mainnet.stellar.gateway.fm`), Channels API `https://channels.openzeppelin.com/testnet` (mainnet drops `/testnet`).
@@ -104,7 +104,7 @@ git add -A && git commit -m "chore: scaffold pnpm monorepo with module-docs conv
 
 ---
 
-### Task 2: `@stellarpay/shared` — network presets + price helpers
+### Task 2: `@stellarpay-sdk/shared` — network presets + price helpers
 
 **Files:**
 - Create: `packages/shared/package.json`, `packages/shared/tsconfig.json`, `packages/shared/src/index.ts`, `packages/shared/src/networks.ts`, `packages/shared/src/price.ts`
@@ -123,7 +123,7 @@ git add -A && git commit -m "chore: scaffold pnpm monorepo with module-docs conv
 `packages/shared/package.json`:
 ```json
 {
-  "name": "@stellarpay/shared",
+  "name": "@stellarpay-sdk/shared",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -181,7 +181,7 @@ describe("NETWORKS", () => {
 });
 ```
 
-- [ ] **Step 3: Run tests, verify failure** — `pnpm --filter @stellarpay/shared test` → FAIL (module not found).
+- [ ] **Step 3: Run tests, verify failure** — `pnpm --filter @stellarpay-sdk/shared test` → FAIL (module not found).
 
 - [ ] **Step 4: Implement**
 
@@ -211,7 +211,7 @@ export function decimalToBaseUnits(decimal: string, decimals = 7): bigint {
 ```
 `src/index.ts` re-exports both modules.
 
-- [ ] **Step 5: Run tests, verify pass** — `pnpm --filter @stellarpay/shared test` → all PASS.
+- [ ] **Step 5: Run tests, verify pass** — `pnpm --filter @stellarpay-sdk/shared test` → all PASS.
 
 - [ ] **Step 6: Write module doc + commit**
 
@@ -222,7 +222,7 @@ git add -A && git commit -m "feat(shared): network presets and price helpers"
 
 ---
 
-### Task 3: `@stellarpay/shared` — `submitViaChannels` (OZ Channels with fallback)
+### Task 3: `@stellarpay-sdk/shared` — `submitViaChannels` (OZ Channels with fallback)
 
 **Files:**
 - Create: `packages/shared/src/channels.ts`
@@ -233,7 +233,7 @@ git add -A && git commit -m "feat(shared): network presets and price helpers"
 - Consumes: `NETWORKS` (Task 2).
 - Produces: `submitViaChannels(opts: { channelsUrl: string; apiKey: string; signedXdr: string; rpcUrl: string; maxPoolRetries?: number }): Promise<string>` — returns tx hash. Internal seams for tests: `opts._client?: { submitTransaction(a: { xdr: string }): Promise<{ hash: string }> }`, `opts._directSubmit?: (xdr: string, rpcUrl: string) => Promise<string>`.
 
-- [ ] **Step 1: Add dependency** — `pnpm --filter @stellarpay/shared add @openzeppelin/relayer-plugin-channels @stellar/stellar-sdk@15.1.0`
+- [ ] **Step 1: Add dependency** — `pnpm --filter @stellarpay-sdk/shared add @openzeppelin/relayer-plugin-channels @stellar/stellar-sdk@15.1.0`
 
 - [ ] **Step 2: Write failing tests**
 
@@ -271,7 +271,7 @@ describe("submitViaChannels", () => {
 });
 ```
 
-- [ ] **Step 3: Run, verify FAIL** — `pnpm --filter @stellarpay/shared test channels` → FAIL.
+- [ ] **Step 3: Run, verify FAIL** — `pnpm --filter @stellarpay-sdk/shared test channels` → FAIL.
 
 - [ ] **Step 4: Implement**
 
@@ -327,7 +327,7 @@ git add -A && git commit -m "feat(shared): gasless submission via OZ Channels wi
 
 ---
 
-### Task 4: `@stellarpay/core` — types + config validation
+### Task 4: `@stellarpay-sdk/core` — types + config validation
 
 **Files:**
 - Create: `packages/core/package.json`, `packages/core/tsconfig.json`, `packages/core/src/index.ts`, `packages/core/src/types.ts`, `packages/core/src/config.ts`
@@ -368,7 +368,7 @@ export class StellarpayConfigError extends Error {}
 export function parseConfig(input: unknown): StellarpayConfig;  // zod-validated, throws StellarpayConfigError
 ```
 
-- [ ] **Step 1: Manifest** — like Task 2's but name `@stellarpay/core`, not private, `"publishConfig": { "access": "public" }`, `"files": ["dist"]`. Deps: `pnpm --filter @stellarpay/core add zod @stellarpay/shared@workspace:*` (note: `zod@^4`).
+- [ ] **Step 1: Manifest** — like Task 2's but name `@stellarpay-sdk/core`, not private, `"publishConfig": { "access": "public" }`, `"files": ["dist"]`. Deps: `pnpm --filter @stellarpay-sdk/core add zod @stellarpay-sdk/shared@workspace:*` (note: `zod@^4`).
 
 - [ ] **Step 2: Write failing tests**
 
@@ -417,7 +417,7 @@ describe("parseConfig", () => {
 
 ---
 
-### Task 5: `@stellarpay/core` — route compiler & matcher
+### Task 5: `@stellarpay-sdk/core` — route compiler & matcher
 
 **Files:**
 - Create: `packages/core/src/router.ts`
@@ -456,7 +456,7 @@ describe("matchRoute", () => {
 
 ---
 
-### Task 6: `@stellarpay/core` — `mpp-charge` scheme module
+### Task 6: `@stellarpay-sdk/core` — `mpp-charge` scheme module
 
 **Files:**
 - Create: `packages/core/src/schemes/mppCharge.ts`
@@ -466,7 +466,7 @@ describe("matchRoute", () => {
 - Consumes: types (Task 4), `NETWORKS`, `dollarToDecimal` (shared).
 - Produces: `createMppChargeModule(cfg: StellarpayConfig): SchemeModule` (scheme `"mpp-charge"`).
 
-- [ ] **Step 1: Add deps** — `pnpm --filter @stellarpay/core add mppx @stellar/mpp @stellar/stellar-sdk@15.1.0`
+- [ ] **Step 1: Add deps** — `pnpm --filter @stellarpay-sdk/core add mppx @stellar/mpp @stellar/stellar-sdk@15.1.0`
 
 - [ ] **Step 2: Failing tests** — these run against the REAL mppx server engine (no network is touched when issuing challenges):
 
@@ -509,7 +509,7 @@ import { Mppx, Store } from "mppx/server";
 import { stellar } from "@stellar/mpp/charge/server";
 import { USDC_SAC_TESTNET } from "@stellar/mpp";
 import { Keypair } from "@stellar/stellar-sdk";
-import { dollarToDecimal, NETWORKS } from "@stellarpay/shared";
+import { dollarToDecimal, NETWORKS } from "@stellarpay-sdk/shared";
 import type { Receipt, RouteRule, SchemeModule, SchemeOutcome, StellarpayConfig } from "../types.js";
 
 function amountFor(rule: RouteRule): { amount: string; asset: string } {
@@ -557,7 +557,7 @@ Implementer notes: (1) if `result.challenge` is not a web `Response` (mppx HTTP 
 
 ---
 
-### Task 7: `@stellarpay/core` — `x402` scheme module
+### Task 7: `@stellarpay-sdk/core` — `x402` scheme module
 
 **Files:**
 - Create: `packages/core/src/schemes/x402.ts`, `packages/core/src/schemes/webAdapter.ts`
@@ -567,7 +567,7 @@ Implementer notes: (1) if `result.challenge` is not a web `Response` (mppx HTTP 
 - Consumes: types (Task 4), `NETWORKS` (shared).
 - Produces: `createX402Module(cfg: StellarpayConfig): SchemeModule` (scheme `"x402"`); `webAdapter(req: Request): HTTPAdapter` (internal).
 
-- [ ] **Step 1: Add deps** — `pnpm --filter @stellarpay/core add @x402/core @x402/stellar`
+- [ ] **Step 1: Add deps** — `pnpm --filter @stellarpay-sdk/core add @x402/core @x402/stellar`
 
 - [ ] **Step 2: Failing tests** — mock the facilitator at HTTP level using `@x402/core`'s own `HTTPFacilitatorClient` pointed at a local `Response` stub:
 
@@ -626,7 +626,7 @@ export function webAdapter(req: Request): HTTPAdapter {
 // packages/core/src/schemes/x402.ts
 import { x402ResourceServer, x402HTTPResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactStellarScheme } from "@x402/stellar/exact/server";
-import { NETWORKS } from "@stellarpay/shared";
+import { NETWORKS } from "@stellarpay-sdk/shared";
 import { webAdapter } from "./webAdapter.js";
 import type { Receipt, SchemeModule, SchemeOutcome, StellarpayConfig } from "../types.js";
 
@@ -683,7 +683,7 @@ Implementer notes: `x402ResourceServer`'s scheme-registration method name must b
 
 ---
 
-### Task 8: `@stellarpay/core` — `mpp-channel` scheme module
+### Task 8: `@stellarpay-sdk/core` — `mpp-channel` scheme module
 
 **Files:**
 - Create: `packages/core/src/schemes/mppChannel.ts`
@@ -733,7 +733,7 @@ Full implementation follows Task 6 line-for-line except: method factory is `stel
 
 ---
 
-### Task 9: `@stellarpay/core` — `stellarpay()` orchestrator
+### Task 9: `@stellarpay-sdk/core` — `stellarpay()` orchestrator
 
 **Files:**
 - Create: `packages/core/src/stellarpay.ts`
@@ -805,7 +805,7 @@ describe("stellarpay()", () => {
 
 ---
 
-### Task 10: `@stellarpay/express` adapter
+### Task 10: `@stellarpay-sdk/express` adapter
 
 **Files:**
 - Create: `packages/express/package.json`, `packages/express/tsconfig.json`, `packages/express/src/index.ts`
@@ -815,7 +815,7 @@ describe("stellarpay()", () => {
 - Consumes: `stellarpay`, `Stellarpay` (core).
 - Produces: `stellarpayExpress(configOrInstance: unknown | Stellarpay): RequestHandler`.
 
-- [ ] **Step 1: Manifest + deps** — publishable manifest as Task 4; `pnpm --filter @stellarpay/express add @stellarpay/core@workspace:* && pnpm --filter @stellarpay/express add -D express @types/express supertest @types/supertest`. `express` is a **peerDependency** (`>=4`), dev-installed for tests.
+- [ ] **Step 1: Manifest + deps** — publishable manifest as Task 4; `pnpm --filter @stellarpay-sdk/express add @stellarpay-sdk/core@workspace:* && pnpm --filter @stellarpay-sdk/express add -D express @types/express supertest @types/supertest`. `express` is a **peerDependency** (`>=4`), dev-installed for tests.
 
 - [ ] **Step 2: Failing tests**
 
@@ -857,7 +857,7 @@ describe("stellarpayExpress", () => {
 
 ```ts
 import type { NextFunction, Request as ExReq, RequestHandler, Response as ExRes } from "express";
-import { stellarpay, type Stellarpay } from "@stellarpay/core";
+import { stellarpay, type Stellarpay } from "@stellarpay-sdk/core";
 
 function toWebRequest(req: ExReq): Request {
   const proto = req.protocol || "http";
@@ -895,7 +895,7 @@ export function stellarpayExpress(configOrInstance: unknown): RequestHandler {
 
 ---
 
-### Task 11: `@stellarpay/hono` adapter
+### Task 11: `@stellarpay-sdk/hono` adapter
 
 **Files:**
 - Create: `packages/hono/package.json`, `packages/hono/tsconfig.json`, `packages/hono/src/index.ts`
@@ -904,7 +904,7 @@ export function stellarpayExpress(configOrInstance: unknown): RequestHandler {
 **Interfaces:**
 - Produces: `stellarpayHono(configOrInstance: unknown | Stellarpay): MiddlewareHandler`.
 
-- [ ] **Step 1: Manifest + deps** — `hono` as peerDependency (`>=4`), dev-installed. `@stellarpay/core@workspace:*` dep.
+- [ ] **Step 1: Manifest + deps** — `hono` as peerDependency (`>=4`), dev-installed. `@stellarpay-sdk/core@workspace:*` dep.
 
 - [ ] **Step 2: Failing tests** — Hono apps are testable without a listener via `app.request()`:
 
@@ -935,7 +935,7 @@ describe("stellarpayHono", () => {
 
 ```ts
 import type { MiddlewareHandler } from "hono";
-import { stellarpay, type Stellarpay } from "@stellarpay/core";
+import { stellarpay, type Stellarpay } from "@stellarpay-sdk/core";
 
 /** One-line Hono paywall: app.use("*", stellarpayHono(config)). */
 export function stellarpayHono(configOrInstance: unknown): MiddlewareHandler {
@@ -955,7 +955,7 @@ export function stellarpayHono(configOrInstance: unknown): MiddlewareHandler {
 
 ---
 
-### Task 12: `@stellarpay/fastify` adapter
+### Task 12: `@stellarpay-sdk/fastify` adapter
 
 **Files:**
 - Create: `packages/fastify/package.json`, `packages/fastify/tsconfig.json`, `packages/fastify/src/index.ts`
@@ -964,7 +964,7 @@ export function stellarpayHono(configOrInstance: unknown): MiddlewareHandler {
 **Interfaces:**
 - Produces: `stellarpayFastify: (fastify: FastifyInstance, opts: { config: unknown | Stellarpay }) => Promise<void>` — registered via `fastify.register(stellarpayFastify, { config })`, gates via an `onRequest` hook.
 
-- [ ] **Step 1: Manifest + deps** — `fastify` peerDependency (`>=4`), dev-installed; `@stellarpay/core@workspace:*`.
+- [ ] **Step 1: Manifest + deps** — `fastify` peerDependency (`>=4`), dev-installed; `@stellarpay-sdk/core@workspace:*`.
 
 - [ ] **Step 2: Failing tests** — use `fastify.inject()`:
 
@@ -998,7 +998,7 @@ describe("stellarpayFastify", () => {
 
 ---
 
-### Task 13: `@stellarpay/client` — probe, detection, limits, x402 leg
+### Task 13: `@stellarpay-sdk/client` — probe, detection, limits, x402 leg
 
 **Files:**
 - Create: `packages/client/package.json`, `packages/client/tsconfig.json`, `packages/client/src/index.ts`, `packages/client/src/detect.ts`, `packages/client/src/limits.ts`, `packages/client/src/events.ts`, `packages/client/src/x402Leg.ts`
@@ -1029,7 +1029,7 @@ export function detectProtocol(res: Response): "x402" | "mpp" | undefined;  // (
 export class SpendTracker { checkAndReserve(baseUnits: bigint | undefined, url: string): void }  // (src/limits.ts) throws SpendLimitExceeded / emits blocked
 ```
 
-- [ ] **Step 1: Manifest + deps** — publishable; `pnpm --filter @stellarpay/client add @x402/fetch @x402/stellar @x402/core mppx @stellar/mpp @stellar/stellar-sdk@15.1.0 @stellarpay/shared@workspace:*` (shared stays out of public signatures).
+- [ ] **Step 1: Manifest + deps** — publishable; `pnpm --filter @stellarpay-sdk/client add @x402/fetch @x402/stellar @x402/core mppx @stellar/mpp @stellar/stellar-sdk@15.1.0 @stellarpay-sdk/shared@workspace:*` (shared stays out of public signatures).
 
 - [ ] **Step 2: Failing tests**
 
@@ -1110,7 +1110,7 @@ Implementer note: `x402Client` registration method name — same guard as Task 7
 
 ---
 
-### Task 14: `@stellarpay/client` — MPP leg + unified `createPayingFetch`
+### Task 14: `@stellarpay-sdk/client` — MPP leg + unified `createPayingFetch`
 
 **Files:**
 - Create: `packages/client/src/mppLeg.ts`
@@ -1127,7 +1127,7 @@ Implementer note: `x402Client` registration method name — same guard as Task 7
 // packages/client/test/payingFetch.test.ts
 import { describe, it, expect, vi } from "vitest";
 import { Keypair } from "@stellar/stellar-sdk";
-import { stellarpay } from "@stellarpay/core";
+import { stellarpay } from "@stellarpay-sdk/core";
 import { createPayingFetch, SpendLimitExceeded } from "../src/index.js";
 
 const server = stellarpay({
@@ -1177,7 +1177,7 @@ describe("createPayingFetch (MPP leg)", () => {
 
 ---
 
-### Task 15: `@stellarpay/mcp` — paid tools (server guard + paying client)
+### Task 15: `@stellarpay-sdk/mcp` — paid tools (server guard + paying client)
 
 **Files:**
 - Create: `packages/mcp/package.json`, `packages/mcp/tsconfig.json`, `packages/mcp/src/index.ts`, `packages/mcp/src/server.ts`, `packages/mcp/src/client.ts`
@@ -1199,7 +1199,7 @@ export function toolPayments(config: {
 export function wrapPaidMcpClient<C extends { callTool: Function }>(client: C, opts: { secret: string; network: string; rpcUrl?: string }): C;
 ```
 
-- [ ] **Step 1: Manifest + deps** — publishable; `pnpm --filter @stellarpay/mcp add mppx @stellar/mpp @stellar/stellar-sdk@15.1.0 @stellarpay/shared@workspace:* && pnpm --filter @stellarpay/mcp add -D @modelcontextprotocol/sdk` (`@modelcontextprotocol/sdk` is a peerDependency).
+- [ ] **Step 1: Manifest + deps** — publishable; `pnpm --filter @stellarpay-sdk/mcp add mppx @stellar/mpp @stellar/stellar-sdk@15.1.0 @stellarpay-sdk/shared@workspace:* && pnpm --filter @stellarpay-sdk/mcp add -D @modelcontextprotocol/sdk` (`@modelcontextprotocol/sdk` is a peerDependency).
 
 - [ ] **Step 2: Failing tests**
 
@@ -1240,7 +1240,7 @@ import { Mppx, Store, Transport } from "mppx/server";
 import { stellar } from "@stellar/mpp/charge/server";
 import { USDC_SAC_TESTNET } from "@stellar/mpp";
 import { Keypair } from "@stellar/stellar-sdk";
-import { dollarToDecimal } from "@stellarpay/shared";
+import { dollarToDecimal } from "@stellarpay-sdk/shared";
 
 export function toolPayments(config: ToolPaymentsConfig) {
   const payment = Mppx.create({
@@ -1373,6 +1373,6 @@ SMOKE_SPONSOR_SECRET=
 
 ## Self-Review (performed at authoring time)
 
-- **Spec coverage:** §1–§6 → Tasks 1–15; §9 error handling → Tasks 3, 9, 13; §10 testing → per-task TDD + Tasks 16–17; §11 docs/publishing → Task 18 + per-task module docs; §8 roadmap → Task 18. §7 (demos/hosting) is deliberately Plan B. Spec deviations (approved separately): MCP payments are in-protocol MPP (mppx `mcpSdk` transport) rather than HTTP-level x402, and the paying MCP helper lives in `@stellarpay/mcp` rather than `@stellarpay/client`.
+- **Spec coverage:** §1–§6 → Tasks 1–15; §9 error handling → Tasks 3, 9, 13; §10 testing → per-task TDD + Tasks 16–17; §11 docs/publishing → Task 18 + per-task module docs; §8 roadmap → Task 18. §7 (demos/hosting) is deliberately Plan B. Spec deviations (approved separately): MCP payments are in-protocol MPP (mppx `mcpSdk` transport) rather than HTTP-level x402, and the paying MCP helper lives in `@stellarpay-sdk/mcp` rather than `@stellarpay-sdk/client`.
 - **Placeholder scan:** the two "opaque until smoke" shapes (x402 settle fields, `Payment-Receipt` payload) are explicit risk-managed decisions with defensive code and a confirmation step in Task 17 — not TBDs. Task 16's comment blocks name their concrete work items.
 - **Type consistency:** `handleWithMeta`/`passHeaders` (Tasks 9–12), `SchemeOutcome`/`Receipt` (Tasks 4, 6, 7, 8), `SpendTracker.checkAndReserve` (Tasks 13–14), `toolPayments().guard/priceOf` (Task 15) — names checked consistent across tasks.

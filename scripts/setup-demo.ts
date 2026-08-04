@@ -11,7 +11,7 @@
  */
 import { Account, Asset, Keypair, Networks, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
 import { USDC_SAC_TESTNET } from "@stellar/mpp";
-import { submitViaChannels } from "@stellarpay/shared";
+import { submitViaChannels } from "@stellarpay-sdk/shared";
 
 try {
   process.loadEnvFile();

@@ -1,6 +1,6 @@
-# @stellarpay/fastify
+# @stellarpay-sdk/fastify
 
-One-line Fastify plugin adapter for [`@stellarpay/core`](../core/README.md). Registers an
+One-line Fastify plugin adapter for [`@stellarpay-sdk/core`](../core/README.md). Registers an
 `onRequest` hook that converts Fastify's `Request`/`Reply` to/from web-standard types and
 dispatches to the core paywall handler — the same direct-response / pass-through / fall-through
 contract as the other adapters.
@@ -12,7 +12,7 @@ Part of the [stellarpay](../../README.md) SDK.
 Not yet published — see [PUBLISHING.md](../../PUBLISHING.md). Once published:
 
 ```sh
-npm install @stellarpay/fastify @stellarpay/core fastify
+npm install @stellarpay-sdk/fastify @stellarpay-sdk/core fastify
 ```
 
 ## Minimal working example
@@ -22,7 +22,7 @@ as a standalone server):
 
 ```ts
 import Fastify from "fastify";
-import { stellarpayFastify } from "@stellarpay/fastify";
+import { stellarpayFastify } from "@stellarpay-sdk/fastify";
 
 const cfg = {
   network: "stellar:testnet",

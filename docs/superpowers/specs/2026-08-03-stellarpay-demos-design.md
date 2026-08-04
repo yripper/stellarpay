@@ -37,7 +37,7 @@ scripts/setup-demo.ts
 docs/demo-video.md
 ```
 
-Each example depends on the `@stellarpay/*` packages via `workspace:*` (resolved locally; these manifests are private so the publish-blocking rule from Plan A does not apply).
+Each example depends on the `@stellarpay-sdk/*` packages via `workspace:*` (resolved locally; these manifests are private so the publish-blocking rule from Plan A does not apply).
 
 **Receipt forwarding is the one piece of shared demo logic.** Rather than a new shared package (YAGNI — examples are private), each API service includes a small local `reportReceipt.ts` helper (identical file, ~20 lines, copy per service is acceptable for examples): builds `onPayment` callbacks (core `StellarpayConfig.onPayment: (receipt: Receipt) => void`, `packages/core/src/types.ts:67`; mcp `ToolPaymentsConfig.onPayment`) that POST the receipt plus `{service: "<name>"}` to the dashboard. Fire-and-forget with a short timeout; failures are swallowed (core already isolates `onPayment` errors, but the helper must not hang the event loop either).
 
@@ -121,7 +121,7 @@ The `agent-log` kind is what makes the unleash button theatrical: the agent post
 Idempotent provisioning/verification for demo identities, runnable before demos and by anyone cloning the repo:
 
 - For buyer + payTo accounts: check existence on Horizon testnet; friendbot-fund if missing.
-- Check/establish the testnet-USDC trustline (SAC `CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA`) via `submitViaChannels` from `@stellarpay/shared`.
+- Check/establish the testnet-USDC trustline (SAC `CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA`) via `submitViaChannels` from `@stellarpay-sdk/shared`.
 - Detect a zero-USDC buyer balance and print the manual faucet instruction (the faucet step cannot be automated).
 - Prints a ✅/⚠️ table; never prints secret seeds.
 

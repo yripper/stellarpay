@@ -1,8 +1,8 @@
-# @stellarpay/express — Express Middleware Adapter
+# @stellarpay-sdk/express — Express Middleware Adapter
 
 ## Purpose
 
-Express middleware adapter for the Stellarpay payment SDK. Wraps `@stellarpay/core`'s
+Express middleware adapter for the Stellarpay payment SDK. Wraps `@stellarpay-sdk/core`'s
 `Stellarpay` orchestrator as a one-line Express middleware: `app.use(stellarpayExpress(config))`.
 Converts Express Request/Response to/from Web standard types, dispatches each request to the
 core paywall handler, and manages the routing: direct response (402 challenge, error), pass-through
@@ -39,7 +39,7 @@ with settlement headers, or next().
 
 ## Dependencies
 
-- `@stellarpay/core` (workspace) — `stellarpay()` function and `Stellarpay` type.
+- `@stellarpay-sdk/core` (workspace) — `stellarpay()` function and `Stellarpay` type.
 - `express` (peerDependency >=4) — `RequestHandler`, `Request`, `Response`, `NextFunction`
   type signatures; dev-installed for tests.
 - `supertest` (dev-only) — HTTP testing against Express apps.
@@ -80,7 +80,7 @@ with settlement headers, or next().
   - "gates paid routes with 402 + challenge headers" — matched paid routes return 402
   - "preserves multi-value set-cookie headers" — verifies that multiple Set-Cookie header
     values from a Response are preserved (not dropped) when written to the Express response
-- Run: `pnpm --filter @stellarpay/express test` (or `pnpm test` from repo root).
+- Run: `pnpm --filter @stellarpay-sdk/express test` (or `pnpm test` from repo root).
 
 ## Verified Against
 

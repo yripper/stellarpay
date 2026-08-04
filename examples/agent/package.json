@@ -14,9 +14,9 @@
     "@hono/node-server": "^2.0.12",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@stellar/stellar-sdk": "16.2.0",
-    "@stellarpay/client": "workspace:*",
-    "@stellarpay/core": "workspace:*",
-    "@stellarpay/mcp": "workspace:*",
+    "@stellarpay-sdk/client": "workspace:*",
+    "@stellarpay-sdk/core": "workspace:*",
+    "@stellarpay-sdk/mcp": "workspace:*",
     "hono": "^4",
     "tsx": "^4.19.0"
   },

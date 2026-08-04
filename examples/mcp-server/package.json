@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@stellarpay/mcp": "workspace:*",
+    "@stellarpay-sdk/mcp": "workspace:*",
     "express": "^4",
     "tsx": "^4.19.0",
     "zod": "^4"

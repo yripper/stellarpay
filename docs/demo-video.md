@@ -100,10 +100,10 @@ our backend — watch it tick down as the agent spends."
 (`packages/core/src/schemes/mppCharge.ts:16-39,79,84-85` — `txHashFromReceiptHeader` decodes
 the mpp `Payment-Receipt` header's `reference` field, which `@stellar/mpp`'s server sets to
 the broadcast transaction's own hash), amber `x402` rows (`GET /report/*`, `GET
-/alerts/whales`) **and** cyan `mpp` rows routed through `@stellarpay/core`'s mpp-charge scheme
+/alerts/whales`) **and** cyan `mpp` rows routed through `@stellarpay-sdk/core`'s mpp-charge scheme
 (`GET /deep-dive/*` on express-api, `GET /stats/fees` on fastify-api) are now equally fair
 game to click — pick whichever row is on screen. **The MCP tool rows are the one exception:**
-`account_summary`/`whale_watch` go through the separate `@stellarpay/mcp` package
+`account_summary`/`whale_watch` go through the separate `@stellarpay-sdk/mcp` package
 (`packages/mcp/src/server.ts`), whose `ToolPaymentReceipt` type has no `txHash` field at all
 (untouched by this fix) — those rows still render `—` instead of a link; don't click on those
 expecting one. The "verify on-chain ↗" bar and the buyer-balance panel
@@ -122,15 +122,15 @@ Say: "Six packages, ready to publish on npm under @stellarpay: core, Express, Ho
 an auto-paying client, and paid MCP tools — the missing monetization layer for the agent
 economy, on Stellar."
 
-*Note for the operator:* the repo ships **seven** packages total, but `@stellarpay/shared`
+*Note for the operator:* the repo ships **seven** packages total, but `@stellarpay-sdk/shared`
 is deliberately private and never published (`README.md:215-221`, `PUBLISHING.md`) — only
 `core`, `express`, `hono`, `fastify`, `client`, and `mcp` go to npm, so "six packages" is the
 accurate count. **As of this doc being written, none of the six are on npm yet** (confirmed
-2026-08-04: `curl https://registry.npmjs.org/@stellarpay/core` → `{"error":"Not found"}`) —
+2026-08-04: `curl https://registry.npmjs.org/@stellarpay-sdk/core` → `{"error":"Not found"}`) —
 publishing is a manual step the repo owner runs personally per `PUBLISHING.md`, not something
 any task automates. Before recording this shot, re-confirm the packages are still unpublished
-(`npm view @stellarpay/core version`, or check
-`https://www.npmjs.com/package/@stellarpay/core`) — if they've since gone live, swap the
+(`npm view @stellarpay-sdk/core version`, or check
+`https://www.npmjs.com/package/@stellarpay-sdk/core`) — if they've since gone live, swap the
 line for: "Six packages, published on npm under @stellarpay…" — don't say "published" until
 it's true.
 

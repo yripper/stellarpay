@@ -1,5 +1,5 @@
 {
-  "name": "@stellarpay/client",
+  "name": "@stellarpay-sdk/client",
   "version": "0.1.0",
   "description": "Auto-paying fetch for Stellar x402 and MPP challenges, with spend limits.",
   "keywords": ["stellar", "x402", "mpp", "payments", "paywall", "fetch", "agent"],
@@ -28,7 +28,7 @@
   "dependencies": {
     "@stellar/mpp": "^0.7.1",
     "@stellar/stellar-sdk": "16.2.0",
-    "@stellarpay/core": "workspace:*",
+    "@stellarpay-sdk/core": "workspace:*",
     "@x402/core": "~2.20.0",
     "@x402/fetch": "^2.20.0",
     "@x402/stellar": "^2.20.0",

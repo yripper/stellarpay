@@ -1,6 +1,6 @@
-# @stellarpay/express
+# @stellarpay-sdk/express
 
-One-line Express middleware adapter for [`@stellarpay/core`](../core/README.md). Converts
+One-line Express middleware adapter for [`@stellarpay-sdk/core`](../core/README.md). Converts
 Express `Request`/`Response` to/from web-standard types, runs the core paywall handler, and
 dispatches: writes a `402`/error response directly, passes settlement headers through and calls
 `next()`, or falls through untouched for unmatched routes.
@@ -12,7 +12,7 @@ Part of the [stellarpay](../../README.md) SDK.
 Not yet published — see [PUBLISHING.md](../../PUBLISHING.md). Once published:
 
 ```sh
-npm install @stellarpay/express @stellarpay/core express
+npm install @stellarpay-sdk/express @stellarpay-sdk/core express
 ```
 
 ## Minimal working example
@@ -22,7 +22,7 @@ as a standalone server):
 
 ```ts
 import express from "express";
-import { stellarpayExpress } from "@stellarpay/express";
+import { stellarpayExpress } from "@stellarpay-sdk/express";
 
 const cfg = {
   network: "stellar:testnet",

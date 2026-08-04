@@ -1,4 +1,4 @@
-# @stellarpay/client — Auto-Paying Fetch (x402 + MPP)
+# @stellarpay-sdk/client — Auto-Paying Fetch (x402 + MPP)
 
 ## Purpose
 
@@ -62,7 +62,7 @@ throughout so a host app can log/observe payment activity.
 - `buildX402Fetch(raw, opts): typeof fetch` (`x402Leg.ts:6-14`).
 - `createMppLeg(config): Mppx.Mppx<...>` (`mppLeg.ts:76-165`).
 
-This mirrors `@stellarpay/core`'s convention (see `docs/modules/core.md`'s "Scheme modules"
+This mirrors `@stellarpay-sdk/core`'s convention (see `docs/modules/core.md`'s "Scheme modules"
 section): the public contract is one function (`createPayingFetch`), not its internals.
 Tests import internals directly from `src/*.ts`.
 
@@ -111,14 +111,14 @@ Tests import internals directly from `src/*.ts`.
 ## Dependencies
 
 - `@stellar/stellar-sdk` — `Keypair`.
-- `@stellarpay/core` (workspace, **runtime** dependency — moved off `@stellarpay/shared` in
+- `@stellarpay-sdk/core` (workspace, **runtime** dependency — moved off `@stellarpay-sdk/shared` in
   the final fix wave, 2026-08-03) — `dollarToDecimal`, `decimalToBaseUnits`, plain utility
   exports (used only by `SpendTracker`'s `maxPerCall`/`maxTotal` conversion — never for
   parsing an on-wire challenge amount, which is already atomic on both legs).
   `test/payingFetch.test.ts` separately builds a real in-process `stellarpay()` server against
   the same dependency, as a fetch endpoint to generate real MPP challenges.
 - `@x402/core` (pinned `~2.20.0`, not `^` — a looser range risks a second, incompatible copy
-  resolving alongside `@stellarpay/core`'s own `@x402/core` dependency, breaking `instanceof`
+  resolving alongside `@stellarpay-sdk/core`'s own `@x402/core` dependency, breaking `instanceof`
   checks across the two installed copies), `@x402/fetch`, `@x402/stellar` — the x402 leg.
 - `mppx`, `@stellar/mpp` — the MPP leg (`mppx/client`, `@stellar/mpp/charge/client`,
   `@stellar/mpp/channel/client`). Pinned `mppx@0.6.31` exact (controller ruling, `progress.md`).
@@ -235,7 +235,7 @@ Tests import internals directly from `src/*.ts`.
 - `test/limits.test.ts` — `SpendTracker` unit tests (Task 13's brief tests, plus a
   post-review addition proving `release` clamps at `0n` rather than letting the
   cumulative total go negative).
-- `test/payingFetch.test.ts` — end-to-end against a real in-process `@stellarpay/core`
+- `test/payingFetch.test.ts` — end-to-end against a real in-process `@stellarpay-sdk/core`
   server (`stellarpay(...)` served via `server.handle(req)`, no HTTP listener):
   - `describe("createPayingFetch (MPP leg)")` — the brief's Step 1 tests verbatim: 402
     surfaces to the MPP handler and emits `"challenge"`; `maxTotal` is enforced before any
@@ -252,7 +252,7 @@ Tests import internals directly from `src/*.ts`.
     call twice and asserting neither rejection is `SpendLimitExceeded` — verified to
     correctly go red when the `release()` calls are removed, see task-14-report.md); plus
     a direct `SpendTracker.release(undefined)` no-op check.
-- Run: `pnpm --filter @stellarpay/client test` (or `pnpm test` from repo root).
+- Run: `pnpm --filter @stellarpay-sdk/client test` (or `pnpm test` from repo root).
 
 ## Verified Against
 
@@ -265,8 +265,8 @@ Tests import internals directly from `src/*.ts`.
   `onChallenge`-fallback behavior and the channel client's construction-time pinning
   check, the compiled `.js` (`mppx@0.6.31`, `@stellar/mpp@0.7.1`) under
   `packages/client/node_modules/` — not just the `.d.ts`, which doesn't show the throw.
-- 2026-08-03 (final fix wave): `@stellarpay/shared`'s `dollarToDecimal`/`decimalToBaseUnits`
-  swapped for the now-public `@stellarpay/core` equivalents, `@stellarpay/core` moved from
+- 2026-08-03 (final fix wave): `@stellarpay-sdk/shared`'s `dollarToDecimal`/`decimalToBaseUnits`
+  swapped for the now-public `@stellarpay-sdk/core` equivalents, `@stellarpay-sdk/core` moved from
   a devDependency to a real runtime `dependency`, `MissingSignerConfig` added and
   line-numbers in `index.ts` recounted (uniformly shifted `+3` from its addition). All 17
   client-package tests still pass — the `MissingSignerConfig` coverage is two added

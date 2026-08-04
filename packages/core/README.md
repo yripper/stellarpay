@@ -1,4 +1,4 @@
-# @stellarpay/core
+# @stellarpay-sdk/core
 
 The paywall engine. Validates a config, compiles a route table, and dispatches matched
 requests to one of three payment schemes — **x402**, **mpp-charge**, or **mpp-channel** — all
@@ -13,7 +13,7 @@ Part of the [stellarpay](../../README.md) SDK.
 Not yet published — see [PUBLISHING.md](../../PUBLISHING.md). Once published:
 
 ```sh
-npm install @stellarpay/core
+npm install @stellarpay-sdk/core
 ```
 
 ## Minimal working example
@@ -21,7 +21,7 @@ npm install @stellarpay/core
 Taken directly from `test/stellarpay.test.ts`:
 
 ```ts
-import { stellarpay } from "@stellarpay/core";
+import { stellarpay } from "@stellarpay-sdk/core";
 
 const paywall = stellarpay({
   network: "stellar:testnet",
@@ -41,8 +41,8 @@ console.log(unmatched); // undefined — no configured route matched
 ```
 
 Run it against a real HTTP server via one of the framework adapters —
-[`@stellarpay/express`](../express/README.md), [`@stellarpay/hono`](../hono/README.md), or
-[`@stellarpay/fastify`](../fastify/README.md) — rather than calling `paywall.handle()` directly.
+[`@stellarpay-sdk/express`](../express/README.md), [`@stellarpay-sdk/hono`](../hono/README.md), or
+[`@stellarpay-sdk/fastify`](../fastify/README.md) — rather than calling `paywall.handle()` directly.
 
 ## API
 

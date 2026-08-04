@@ -14,7 +14,7 @@ Stretch goals beyond this hackathon submission. Verbatim from the design spec's 
 
 ## Context
 
-`@stellarpay/core`'s `mpp-charge` and `mpp-channel` scheme modules currently use `Store.memory()`
+`@stellarpay-sdk/core`'s `mpp-charge` and `mpp-channel` scheme modules currently use `Store.memory()`
 for replay/voucher state — an in-process `Map`, fine for a single-instance demo but not for a
 horizontally-scaled or serverless deployment (state is lost on restart and not shared across
 instances). This is the gap the Redis `Store` adapter item above would close; see

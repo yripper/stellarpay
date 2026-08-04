@@ -1,6 +1,6 @@
 # Publishing stellarpay to npm
 
-Exact steps to publish all `@stellarpay/*` packages under the `@stellarpay` npm scope. Run
+Exact steps to publish all `@stellarpay-sdk/*` packages under the `@stellarpay` npm scope. Run
 these yourself when ready — nothing here is run automatically.
 
 ```

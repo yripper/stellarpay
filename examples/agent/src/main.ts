@@ -1,9 +1,9 @@
 import { serve } from "@hono/node-server";
 import { Keypair } from "@stellar/stellar-sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { createPayingFetch, type PayEvent } from "@stellarpay/client";
-import { payingHttpTransport, wrapPaidMcpClient } from "@stellarpay/mcp";
-import { NETWORKS } from "@stellarpay/core";
+import { createPayingFetch, type PayEvent } from "@stellarpay-sdk/client";
+import { payingHttpTransport, wrapPaidMcpClient } from "@stellarpay-sdk/mcp";
+import { NETWORKS } from "@stellarpay-sdk/core";
 import { readEnv } from "./env.js";
 import { createNarrator } from "./narrate.js";
 import { buildEconomy, scriptedTour } from "./economy.js";
@@ -95,7 +95,7 @@ async function oneRun(): Promise<void> {
     buyerPublicKey,
   });
 
-  // Truthful scope: the limits are enforced by @stellarpay/client, which sees the HTTP
+  // Truthful scope: the limits are enforced by @stellarpay-sdk/client, which sees the HTTP
   // purchases only — MCP tool payments settle through the MCP client's own leg.
   narrate(`Budget this run: ${LIMITS.maxPerCall} per paid HTTP call, ${LIMITS.maxTotal} total (testnet USDC).`);
   const apiKey = env.anthropicApiKey;

@@ -12,7 +12,7 @@ unless stated otherwise — see [Status](#status--known-facts).
 ## Hero: three routes, three protocols, one config
 
 ```ts
-import { stellarpay } from "@stellarpay/core";
+import { stellarpay } from "@stellarpay-sdk/core";
 
 const paywall = stellarpay({
   network: "stellar:testnet",                    // preset picks facilitator URL + testnet USDC SAC
@@ -51,8 +51,8 @@ facilitator. Verified by running the full config through `parseConfig` directly.
 | Existing | stellarpay adds |
 |---|---|
 | `@x402/express` / `@x402/hono` / `@x402/fastify` (x402 only, chain-agnostic + `@x402/stellar` scheme) | One config that also speaks MPP charge + channel per route |
-| `@x402/fetch` (x402-only client), `mppx/client` (MPP-only client) | `@stellarpay/client` — auto-pays *any* 402, both protocols, with spend limits |
-| Nothing | `@stellarpay/mcp` — per-tool-call payments for MCP servers |
+| `@x402/fetch` (x402-only client), `mppx/client` (MPP-only client) | `@stellarpay-sdk/client` — auto-pays *any* 402, both protocols, with spend limits |
+| Nothing | `@stellarpay-sdk/mcp` — per-tool-call payments for MCP servers |
 | OZ facilitator sponsors x402 gas | Sponsored gas for MPP too (native `feePayer`), plus OZ Channels used for demo ops |
 
 We compose, we don't reimplement: x402 protocol mechanics come from `@x402/core` +
@@ -64,7 +64,7 @@ receipts, and DX.
 
 ```mermaid
 flowchart TB
-    subgraph Core["@stellarpay/core"]
+    subgraph Core["@stellarpay-sdk/core"]
         direction TB
         Orchestrator["stellarpay()<br/>orchestrator"]
         X402S["x402 scheme"]
@@ -76,35 +76,35 @@ flowchart TB
     end
 
     subgraph Adapters["Adapters (one line each)"]
-        Express["@stellarpay/express"]
-        Hono["@stellarpay/hono"]
-        Fastify["@stellarpay/fastify"]
+        Express["@stellarpay-sdk/express"]
+        Hono["@stellarpay-sdk/hono"]
+        Fastify["@stellarpay-sdk/fastify"]
     end
     Express --> Orchestrator
     Hono --> Orchestrator
     Fastify --> Orchestrator
 
     subgraph AgentSide["Agent side"]
-        PayFetch["@stellarpay/client<br/>createPayingFetch()"]
+        PayFetch["@stellarpay-sdk/client<br/>createPayingFetch()"]
     end
     PayFetch -- "402 challenge → pay → retry" --> Express
     PayFetch -- "402 challenge → pay → retry" --> Hono
     PayFetch -- "402 challenge → pay → retry" --> Fastify
 
-    subgraph McpSide["@stellarpay/mcp (in-protocol MPP)"]
+    subgraph McpSide["@stellarpay-sdk/mcp (in-protocol MPP)"]
         ToolGuard["toolPayments().guard()"]
         PaidClient["wrapPaidMcpClient()"]
     end
     PaidClient -- "-32042 challenge → pay → retry" --> ToolGuard
 ```
 
-`@stellarpay/mcp` deliberately does **not** route through `@stellarpay/core`'s `stellarpay()`
+`@stellarpay-sdk/mcp` deliberately does **not** route through `@stellarpay-sdk/core`'s `stellarpay()`
 orchestrator or HTTP-level `parseConfig`/routing: MCP payments are in-protocol MPP over `mppx`'s
 `Transport.mcpSdk()`, not HTTP-level x402 — an approved deviation from the original spec sketch
 (see `docs/superpowers/specs/2026-07-31-stellarpay-design.md` §6). `packages/mcp/package.json`
-does depend on `@stellarpay/core`, but only for its `dollarToDecimal` price-conversion utility
+does depend on `@stellarpay-sdk/core`, but only for its `dollarToDecimal` price-conversion utility
 — that helper (along with `decimalToBaseUnits`/`NETWORKS`) moved out of the private
-`@stellarpay/shared` package into `@stellarpay/core`'s public utility exports so the
+`@stellarpay-sdk/shared` package into `@stellarpay-sdk/core`'s public utility exports so the
 publishable packages that need it don't depend on an unpublishable package at runtime (see
 [Status & known facts](#status--known-facts)).
 
@@ -112,15 +112,15 @@ publishable packages that need it don't depend on an unpublishable package at ru
 
 | Package | npm | What it does | README |
 |---|---|---|---|
-| `@stellarpay/core` | not yet published | Config validation, route matching, scheme registry, the `stellarpay()` orchestrator | [packages/core](./packages/core/README.md) |
-| `@stellarpay/express` | not yet published | One-line Express middleware adapter | [packages/express](./packages/express/README.md) |
-| `@stellarpay/hono` | not yet published | One-line Hono middleware adapter | [packages/hono](./packages/hono/README.md) |
-| `@stellarpay/fastify` | not yet published | One-line Fastify plugin adapter | [packages/fastify](./packages/fastify/README.md) |
-| `@stellarpay/client` | not yet published | `createPayingFetch()` — auto-pays any 402 (x402 or MPP), with spend limits | [packages/client](./packages/client/README.md) |
-| `@stellarpay/mcp` | not yet published | Per-tool-call payments for MCP servers (`toolPayments`) + a paying MCP client wrapper | [packages/mcp](./packages/mcp/README.md) |
-| `@stellarpay/shared` | private, unpublished | Internal, dead-until-Plan-B: OZ Channels submission (`submitViaChannels`); re-exports network presets/price helpers from `@stellarpay/core` for backward compatibility | [packages/shared](./packages/shared/README.md) |
+| `@stellarpay-sdk/core` | not yet published | Config validation, route matching, scheme registry, the `stellarpay()` orchestrator | [packages/core](./packages/core/README.md) |
+| `@stellarpay-sdk/express` | not yet published | One-line Express middleware adapter | [packages/express](./packages/express/README.md) |
+| `@stellarpay-sdk/hono` | not yet published | One-line Hono middleware adapter | [packages/hono](./packages/hono/README.md) |
+| `@stellarpay-sdk/fastify` | not yet published | One-line Fastify plugin adapter | [packages/fastify](./packages/fastify/README.md) |
+| `@stellarpay-sdk/client` | not yet published | `createPayingFetch()` — auto-pays any 402 (x402 or MPP), with spend limits | [packages/client](./packages/client/README.md) |
+| `@stellarpay-sdk/mcp` | not yet published | Per-tool-call payments for MCP servers (`toolPayments`) + a paying MCP client wrapper | [packages/mcp](./packages/mcp/README.md) |
+| `@stellarpay-sdk/shared` | private, unpublished | Internal, dead-until-Plan-B: OZ Channels submission (`submitViaChannels`); re-exports network presets/price helpers from `@stellarpay-sdk/core` for backward compatibility | [packages/shared](./packages/shared/README.md) |
 
-Not yet published to npm (confirmed 2026-08-04: `curl https://registry.npmjs.org/@stellarpay/core`
+Not yet published to npm (confirmed 2026-08-04: `curl https://registry.npmjs.org/@stellarpay-sdk/core`
 → `{"error":"Not found"}`) — see [PUBLISHING.md](./PUBLISHING.md) for the exact steps to
 publish all six under the `@stellarpay` npm scope.
 
@@ -132,13 +132,13 @@ publish all six under the `@stellarpay` npm scope.
 > and use the workspace packages directly via `pnpm install`. Once published:
 
 ```sh
-npm install @stellarpay/core @stellarpay/express
+npm install @stellarpay-sdk/core @stellarpay-sdk/express
 ```
 
 **2. Configure** a paywall — one x402 route:
 
 ```ts
-import { stellarpay } from "@stellarpay/core";
+import { stellarpay } from "@stellarpay-sdk/core";
 
 const paywall = stellarpay({
   network: "stellar:testnet",
@@ -155,7 +155,7 @@ const paywall = stellarpay({
 
 ```ts
 import express from "express";
-import { stellarpayExpress } from "@stellarpay/express";
+import { stellarpayExpress } from "@stellarpay-sdk/express";
 
 const app = express();
 app.use(stellarpayExpress(paywall));
@@ -167,7 +167,7 @@ app.listen(3000);
 spend limits:
 
 ```ts
-import { createPayingFetch } from "@stellarpay/client";
+import { createPayingFetch } from "@stellarpay-sdk/client";
 
 const payFetch = createPayingFetch({
   secret: process.env.AGENT_SECRET!, // S... testnet secret key, funded with XLM + USDC
@@ -214,13 +214,13 @@ calls.
 - **Not yet published to npm.** All seven packages build and test from source in this
   monorepo. See [PUBLISHING.md](./PUBLISHING.md) for the exact steps to publish under the
   `@stellarpay` scope.
-- **`@stellarpay/shared` is private** and intentionally never published. It is not a runtime
+- **`@stellarpay-sdk/shared` is private** and intentionally never published. It is not a runtime
   dependency of any publishable package: the network-preset and price-conversion utilities it
-  used to hold now live in `@stellarpay/core`'s public exports (see the Architecture section
+  used to hold now live in `@stellarpay-sdk/core`'s public exports (see the Architecture section
   above), so the six publishable packages never depend on this package at all. `shared` itself
   keeps only `submitViaChannels` (OZ Channels submission) — currently dead code, unused until
   a Plan B demo/ops script calls it — plus a backward-compatible re-export of the moved
-  network/price utilities from `@stellarpay/core`.
+  network/price utilities from `@stellarpay-sdk/core`.
 
 ## Testing
 

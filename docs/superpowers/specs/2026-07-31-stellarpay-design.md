@@ -13,8 +13,8 @@
 | Existing | stellarpay adds |
 |---|---|
 | `@x402/express` / `@x402/hono` / `@x402/fastify` (x402 only, chain-agnostic + `@x402/stellar` scheme) | One config that also speaks MPP charge + channel per route |
-| `@x402/fetch` (x402-only client), `mppx/client` (MPP-only client) | `@stellarpay/client` — auto-pays *any* 402, both protocols, with spend limits |
-| Nothing | `@stellarpay/mcp` — per-tool-call payments for MCP servers |
+| `@x402/fetch` (x402-only client), `mppx/client` (MPP-only client) | `@stellarpay-sdk/client` — auto-pays *any* 402, both protocols, with spend limits |
+| Nothing | `@stellarpay-sdk/mcp` — per-tool-call payments for MCP servers |
 | OZ facilitator sponsors x402 gas | Sponsored gas for MPP too (native `feePayer`), plus OZ Channels used for demo ops |
 
 We compose, we don't reimplement: x402 protocol mechanics come from `@x402/core` + `@x402/stellar`, MPP mechanics from `mppx` + `@stellar/mpp`, gasless submission from `@openzeppelin/relayer-plugin-channels`. stellarpay owns the unified config, scheme routing, receipts, and DX.
@@ -26,12 +26,12 @@ pnpm workspaces, Node >= 22, TypeScript, vitest. Git repo with conventional comm
 ```
 stellar-402/
   packages/
-    core/        # @stellarpay/core    — paywall engine, scheme registry
-    express/     # @stellarpay/express — adapter
-    hono/        # @stellarpay/hono    — adapter
-    fastify/     # @stellarpay/fastify — adapter
-    client/      # @stellarpay/client  — agent-side auto-paying fetch + MCP transport helper
-    mcp/         # @stellarpay/mcp     — paid MCP server wrapper
+    core/        # @stellarpay-sdk/core    — paywall engine, scheme registry
+    express/     # @stellarpay-sdk/express — adapter
+    hono/        # @stellarpay-sdk/hono    — adapter
+    fastify/     # @stellarpay-sdk/fastify — adapter
+    client/      # @stellarpay-sdk/client  — agent-side auto-paying fetch + MCP transport helper
+    mcp/         # @stellarpay-sdk/mcp     — paid MCP server wrapper
     shared/      # internal (unpublished): testnet constants, submitViaChannels, test helpers
   examples/
     express-api/     # flagship paid API: x402 + mpp-charge + free routes
@@ -50,12 +50,12 @@ stellar-402/
 
 Package naming: npm scope `@stellarpay` (verified available on npm 2026-07-31, along with the bare name `stellarpay`). All packages lockstep version `0.1.0`.
 
-## 3. `@stellarpay/core`
+## 3. `@stellarpay-sdk/core`
 
 ### Config API (README hero snippet)
 
 ```ts
-import { stellarpay } from "@stellarpay/core";
+import { stellarpay } from "@stellarpay-sdk/core";
 
 const paywall = stellarpay({
   network: "stellar:testnet",          // preset picks facilitator URL + USDC SAC
@@ -96,14 +96,14 @@ Each scheme implements one small internal interface — `challenge(route) → Re
 
 Thin translations to/from web-standard Request/Response; all logic stays in core.
 
-- `@stellarpay/express` — `app.use(stellarpayExpress(config))` (Node req/res bridge).
-- `@stellarpay/hono` — near-passthrough (Hono is already web-standard); this powers the "gated in minutes" demo.
-- `@stellarpay/fastify` — Fastify plugin (`fastify.register`).
+- `@stellarpay-sdk/express` — `app.use(stellarpayExpress(config))` (Node req/res bridge).
+- `@stellarpay-sdk/hono` — near-passthrough (Hono is already web-standard); this powers the "gated in minutes" demo.
+- `@stellarpay-sdk/fastify` — Fastify plugin (`fastify.register`).
 
-## 5. `@stellarpay/client`
+## 5. `@stellarpay-sdk/client`
 
 ```ts
-import { createPayingFetch } from "@stellarpay/client";
+import { createPayingFetch } from "@stellarpay-sdk/client";
 
 const payFetch = createPayingFetch({
   secret: process.env.AGENT_SECRET,      // S... or Keypair
@@ -118,10 +118,10 @@ const payFetch = createPayingFetch({
 - **Spend limits first-class**: per-call and cumulative caps; a challenge exceeding them throws `SpendLimitExceeded` without signing anything. Docs link this to the on-chain policy-signer roadmap item.
 - **MCP transport helper**: plugs `payFetch` into the MCP SDK client transport so any agent can call paid MCP servers. (Exact custom-fetch option name in `StreamableHTTPClientTransport` verified at implementation.)
 
-## 6. `@stellarpay/mcp`
+## 6. `@stellarpay-sdk/mcp`
 
 ```ts
-import { withPayments } from "@stellarpay/mcp";
+import { withPayments } from "@stellarpay-sdk/mcp";
 
 const paid = withPayments(mcpServer, {
   payTo, network: "stellar:testnet",
@@ -134,7 +134,7 @@ const paid = withPayments(mcpServer, {
 ```
 
 - **Amended 2026-07-31 after upstream API verification:** payments are **in-protocol MPP**, not HTTP-level x402. `mppx` ships a purpose-built MCP payment transport (`Transport.mcpSdk()`): unpaid priced tool calls throw `McpError` code `-32042` with the challenge in `error.data`; credentials travel in `_meta["org.paymentauth/credential"]`; receipts attach to tool results. We build on it with `@stellar/mpp`'s charge method. API: `toolPayments(config)` returning a `guard(toolName, handler)` wrapper + `priceOf(toolName)`. `initialize`, `tools/list`, and unpriced tools pass through untouched.
-- The paying client side (`wrapPaidMcpClient`, via `mppx`'s `McpClient.wrap`) lives in `@stellarpay/mcp` too (amended from §5: keeps `@stellarpay/client` MCP-free); a `payingHttpTransport` helper (MCP SDK's `StreamableHTTPClientTransport` `fetch` option, verified) also supports HTTP-level-gated servers.
+- The paying client side (`wrapPaidMcpClient`, via `mppx`'s `McpClient.wrap`) lives in `@stellarpay-sdk/mcp` too (amended from §5: keeps `@stellarpay-sdk/client` MCP-free); a `payingHttpTransport` helper (MCP SDK's `StreamableHTTPClientTransport` `fetch` option, verified) also supports HTTP-level-gated servers.
 - Emits payment events via `onPayment`.
 
 ## 7. Hosted demos (Railway, one project, six services)

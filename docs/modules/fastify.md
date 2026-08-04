@@ -1,8 +1,8 @@
-# @stellarpay/fastify — Fastify Plugin Adapter
+# @stellarpay-sdk/fastify — Fastify Plugin Adapter
 
 ## Purpose
 
-Fastify plugin adapter for the Stellarpay payment SDK. Wraps `@stellarpay/core`'s
+Fastify plugin adapter for the Stellarpay payment SDK. Wraps `@stellarpay-sdk/core`'s
 `Stellarpay` orchestrator as a one-line Fastify plugin: `fastify.register(stellarpayFastify, { config })`.
 Converts Fastify Request/Reply to/from Web standard types, dispatches each request to the
 core paywall handler via an `onRequest` hook, and manages the routing: direct response (402
@@ -45,7 +45,7 @@ challenge, error), pass-through with settlement headers, or falling through to t
 
 ## Dependencies
 
-- `@stellarpay/core` (workspace) — `stellarpay()` function and `Stellarpay` type.
+- `@stellarpay-sdk/core` (workspace) — `stellarpay()` function and `Stellarpay` type.
 - `fastify` (peerDependency >=4) — `FastifyInstance`, `FastifyRequest`, `FastifyReply` type
   signatures; dev-installed (`^4`, resolved to `4.29.1` in this workspace) for tests.
 - No `fastify-plugin` dependency — see Gotchas.
@@ -81,7 +81,7 @@ challenge, error), pass-through with settlement headers, or falling through to t
   `handleWithMeta` property, it's treated as a pre-built `Stellarpay` instance; otherwise it's
   passed to `stellarpay()` for validation and construction. This allows callers to either hand a
   raw config or reuse an instance across multiple app instances — the same guard snippet used
-  by `@stellarpay/express` and `@stellarpay/hono` (`packages/fastify/src/index.ts:58-61`).
+  by `@stellarpay-sdk/express` and `@stellarpay-sdk/hono` (`packages/fastify/src/index.ts:58-61`).
 - **Header-based payment verification.** Both the Web Request built from Fastify and the Web
   Response written back use only headers and status — request/response bodies are never read or
   copied. This is by design: payment challenges, receipts, and verification are header-based in
@@ -103,7 +103,7 @@ challenge, error), pass-through with settlement headers, or falling through to t
   - "gates and passes appropriately" — registers the plugin at the root, declares routes on the
     same root instance afterward, and asserts free routes pass through (200) while paid routes
     are gated (402) — this is the exact scenario the `skip-override` fix targets.
-- Run: `pnpm --filter @stellarpay/fastify test` (or `pnpm test` from repo root).
+- Run: `pnpm --filter @stellarpay-sdk/fastify test` (or `pnpm test` from repo root).
 
 ## Verified Against
 

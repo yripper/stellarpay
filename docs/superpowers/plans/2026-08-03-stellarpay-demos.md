@@ -4,7 +4,7 @@
 
 **Goal:** Six Railway-hosted demo services forming a live "Stellar Intel" paid micro-economy on Stellar testnet, plus launch collateral (repository metadata, README demo links, demo-video guidance, ops script).
 
-**Architecture:** Each demo is a private pnpm workspace member under `examples/`, consuming the shipped `@stellarpay/*` packages via `workspace:*`. Three paid APIs (express/hono/fastify) + one paid MCP server sell live Horizon/RPC intel; a dashboard receives receipt POSTs over a shared-secret `/ingest` contract and streams them via SSE; an agent service buys across the whole economy via `createPayingFetch` + paid MCP transport, Claude-driven with a deterministic scripted fallback. Deployment is one Railway project (`stellarpay-demo`) using the **shared-monorepo** pattern (no root directory; per-service start command `pnpm --filter <pkg> start` — confirmed against Railway docs `deployments/monorepo`; this supersedes the spec's "root directory `examples/<name>`" wording, which breaks pnpm workspace resolution).
+**Architecture:** Each demo is a private pnpm workspace member under `examples/`, consuming the shipped `@stellarpay-sdk/*` packages via `workspace:*`. Three paid APIs (express/hono/fastify) + one paid MCP server sell live Horizon/RPC intel; a dashboard receives receipt POSTs over a shared-secret `/ingest` contract and streams them via SSE; an agent service buys across the whole economy via `createPayingFetch` + paid MCP transport, Claude-driven with a deterministic scripted fallback. Deployment is one Railway project (`stellarpay-demo`) using the **shared-monorepo** pattern (no root directory; per-service start command `pnpm --filter <pkg> start` — confirmed against Railway docs `deployments/monorepo`; this supersedes the spec's "root directory `examples/<name>`" wording, which breaks pnpm workspace resolution).
 
 **Tech Stack:** TypeScript (NodeNext, strict, from `tsconfig.base.json`), Node ≥22, tsx as the runtime (no build step for examples), Hono + `@hono/node-server` (dashboard, agent), Express 4, Fastify 4, `@modelcontextprotocol/sdk` ^1.30.0, `@anthropic-ai/sdk`, vitest 3, Railway MCP tools.
 
@@ -792,8 +792,8 @@ git commit -m "feat(examples): dashboard mission-control UI"
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@stellarpay/core": "workspace:*",
-    "@stellarpay/express": "workspace:*",
+    "@stellarpay-sdk/core": "workspace:*",
+    "@stellarpay-sdk/express": "workspace:*",
     "express": "^4",
     "tsx": "^4.19.0"
   },
@@ -1107,8 +1107,8 @@ export function readEnv(): Env {
 
 ```ts
 import express, { type Express } from "express";
-import { stellarpayExpress } from "@stellarpay/express";
-import { NETWORKS, type StellarpayConfig } from "@stellarpay/core";
+import { stellarpayExpress } from "@stellarpay-sdk/express";
+import { NETWORKS, type StellarpayConfig } from "@stellarpay-sdk/core";
 import { fetchAccountDeepDive, fetchAssetReport, fetchAssetSummary, type IntelResult } from "./intel.js";
 import { createReceiptReporter } from "./reportReceipt.js";
 import type { Env } from "./env.js";
@@ -1158,7 +1158,7 @@ export function buildApp(env: Env): Express {
         "GET /report/:code/:issuer": { price: PRICES.report, scheme: "x402", what: "full asset report + live order-book" },
         "GET /deep-dive/:account": { price: PRICES.deepDive, scheme: "mpp-charge", what: "balances, flags, recent payments" },
       },
-      hint: "curl a paid route to receive a 402 challenge; pay it with @stellarpay/client.",
+      hint: "curl a paid route to receive a 402 challenge; pay it with @stellarpay-sdk/client.",
     });
   });
   app.get("/healthz", (_req, res) => {
@@ -1199,7 +1199,7 @@ kill %1
 
 - [ ] **Step 8: README + module doc + commit**
 
-`examples/express-api/README.md`: what it sells, route/price table, env vars, `pnpm dev`, "pay it with `@stellarpay/client`" snippet using `createPayingFetch`. Update `docs/modules/examples.md`.
+`examples/express-api/README.md`: what it sells, route/price table, env vars, `pnpm dev`, "pay it with `@stellarpay-sdk/client`" snippet using `createPayingFetch`. Update `docs/modules/examples.md`.
 
 ```bash
 git add examples/express-api docs/modules/examples.md pnpm-lock.yaml
@@ -1222,7 +1222,7 @@ git commit -m "feat(examples): express-api flagship — x402 report + sponsored 
 
 - [ ] **Step 1: Scaffold**
 
-`package.json` — same shape as Task 4's with `"name": "@stellarpay-examples/hono-api"` and dependencies `{ "@stellarpay/core": "workspace:*", "@stellarpay/hono": "workspace:*", "@hono/node-server": "^2.0.12", "hono": "^4", "tsx": "^4.19.0" }` (devDependencies as Task 2, no `@types/express`). `tsconfig.json`/`vitest.config.ts` as Task 2. `.env.example`:
+`package.json` — same shape as Task 4's with `"name": "@stellarpay-examples/hono-api"` and dependencies `{ "@stellarpay-sdk/core": "workspace:*", "@stellarpay-sdk/hono": "workspace:*", "@hono/node-server": "^2.0.12", "hono": "^4", "tsx": "^4.19.0" }` (devDependencies as Task 2, no `@types/express`). `tsconfig.json`/`vitest.config.ts` as Task 2. `.env.example`:
 
 ```
 DEMO_PAYTO=G...
@@ -1322,8 +1322,8 @@ export async function fetchWhales(f: typeof fetch = fetch): Promise<{ status: nu
 
 ```ts
 import { Hono } from "hono";
-import { stellarpayHono } from "@stellarpay/hono";
-import type { StellarpayConfig } from "@stellarpay/core";
+import { stellarpayHono } from "@stellarpay-sdk/hono";
+import type { StellarpayConfig } from "@stellarpay-sdk/core";
 import { fetchWhales } from "./whales.js";
 import { createReceiptReporter } from "./reportReceipt.js";
 import type { Env } from "./env.js";
@@ -1375,7 +1375,7 @@ The entire difference between this API being open and being paid:
 
 ```diff
  import { Hono } from "hono";
-+import { stellarpayHono } from "@stellarpay/hono";
++import { stellarpayHono } from "@stellarpay-sdk/hono";
 
  const app = new Hono();
 +app.use("*", stellarpayHono({
@@ -1417,7 +1417,7 @@ No test suite: this service owns no logic beyond a single guarded Horizon mappin
 
 - [ ] **Step 1: Scaffold + implement**
 
-`package.json`: name `@stellarpay-examples/fastify-api`, dependencies `{ "@stellarpay/core": "workspace:*", "@stellarpay/fastify": "workspace:*", "fastify": "^4", "tsx": "^4.19.0" }`, scripts as Task 4 minus `test`. `tsconfig.json` as Task 2 (include `["src"]`). `.env.example`:
+`package.json`: name `@stellarpay-examples/fastify-api`, dependencies `{ "@stellarpay-sdk/core": "workspace:*", "@stellarpay-sdk/fastify": "workspace:*", "fastify": "^4", "tsx": "^4.19.0" }`, scripts as Task 4 minus `test`. `tsconfig.json` as Task 2 (include `["src"]`). `.env.example`:
 
 ```
 DEMO_PAYTO=G...
@@ -1461,8 +1461,8 @@ export async function fetchFeeStats(f: typeof fetch = fetch): Promise<{ status: 
 
 ```ts
 import Fastify, { type FastifyInstance } from "fastify";
-import { stellarpayFastify } from "@stellarpay/fastify";
-import type { StellarpayConfig } from "@stellarpay/core";
+import { stellarpayFastify } from "@stellarpay-sdk/fastify";
+import type { StellarpayConfig } from "@stellarpay-sdk/core";
 import { fetchFeeStats } from "./fees.js";
 import { createReceiptReporter } from "./reportReceipt.js";
 import type { Env } from "./env.js";
@@ -1534,7 +1534,7 @@ git commit -m "feat(examples): fastify-api fee stats — minimal third-framework
 
 - [ ] **Step 1: Scaffold**
 
-`package.json`: name `@stellarpay-examples/mcp-server`, dependencies `{ "@modelcontextprotocol/sdk": "^1.30.0", "@stellarpay/mcp": "workspace:*", "express": "^4", "tsx": "^4.19.0", "zod": "^4" }`, devDependencies add `@types/express`. Scripts as Task 4 minus `test` (this service's logic is thin Horizon mappings + SDK wiring already covered by `packages/mcp` tests; the live paid-call path is exercised in Tasks 8 and 13). `tsconfig.json` as Task 6. `.env.example`:
+`package.json`: name `@stellarpay-examples/mcp-server`, dependencies `{ "@modelcontextprotocol/sdk": "^1.30.0", "@stellarpay-sdk/mcp": "workspace:*", "express": "^4", "tsx": "^4.19.0", "zod": "^4" }`, devDependencies add `@types/express`. Scripts as Task 4 minus `test` (this service's logic is thin Horizon mappings + SDK wiring already covered by `packages/mcp` tests; the live paid-call path is exercised in Tasks 8 and 13). `tsconfig.json` as Task 6. `.env.example`:
 
 ```
 DEMO_PAYTO=G...
@@ -1617,7 +1617,7 @@ export async function whaleWatch(f: typeof fetch = fetch): Promise<Rec> {
 
 ```ts
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { toolPayments } from "@stellarpay/mcp";
+import { toolPayments } from "@stellarpay-sdk/mcp";
 import { z } from "zod";
 import { accountSummary, assetStats, networkStatus, whaleWatch } from "./intel.js";
 import type { IngestEvent } from "./reportReceipt.js";
@@ -1700,7 +1700,7 @@ app.get("/", (_req, res) => {
     name: "Stellar Intel MCP",
     endpoint: "POST /mcp (MCP streamable HTTP)",
     tools: { network_status: "free", ...PRICES },
-    hint: "connect with any MCP client; pay tool charges with @stellarpay/client + @stellarpay/mcp.",
+    hint: "connect with any MCP client; pay tool charges with @stellarpay-sdk/client + @stellarpay-sdk/mcp.",
   });
 });
 app.get("/healthz", (_req, res) => {
@@ -1762,7 +1762,7 @@ git commit -m "feat(examples): Stellar Intel MCP server — free + per-tool paid
 
 - [ ] **Step 1: Scaffold + verify the Anthropic SDK surface**
 
-`package.json`: name `@stellarpay-examples/agent`, dependencies `{ "@anthropic-ai/sdk": "^0.57.0", "@hono/node-server": "^2.0.12", "@modelcontextprotocol/sdk": "^1.30.0", "@stellarpay/client": "workspace:*", "@stellarpay/core": "workspace:*", "@stellarpay/mcp": "workspace:*", "@stellar/stellar-sdk": "16.2.0", "hono": "^4", "tsx": "^4.19.0" }`, devDependencies as Task 2. `tsconfig.json`/`vitest.config.ts` as Task 2. Run `pnpm install`.
+`package.json`: name `@stellarpay-examples/agent`, dependencies `{ "@anthropic-ai/sdk": "^0.57.0", "@hono/node-server": "^2.0.12", "@modelcontextprotocol/sdk": "^1.30.0", "@stellarpay-sdk/client": "workspace:*", "@stellarpay-sdk/core": "workspace:*", "@stellarpay-sdk/mcp": "workspace:*", "@stellar/stellar-sdk": "16.2.0", "hono": "^4", "tsx": "^4.19.0" }`, devDependencies as Task 2. `tsconfig.json`/`vitest.config.ts` as Task 2. Run `pnpm install`.
 
 **Then verify against the installed `.d.ts` before writing `claude.ts`** (Global Constraints): open `examples/agent/node_modules/@anthropic-ai/sdk/` and confirm: the default-export client class and constructor option `apiKey`; `client.messages.create({ model, max_tokens, system, messages, tools })`; content block types `"text"`/`"tool_use"` and `stop_reason === "tool_use"`; the `tool_result` user-message shape. If any name differs from the code below, adapt the code to the installed reality (never the reverse) and note it in the task report. If `^0.57.0` does not resolve, install the current latest and pin what got installed.
 
@@ -2089,9 +2089,9 @@ export function buildApp(deps: { ingestSecret: string; startRun: () => boolean }
 import { serve } from "@hono/node-server";
 import { Keypair } from "@stellar/stellar-sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { createPayingFetch, type PayEvent } from "@stellarpay/client";
-import { payingHttpTransport, wrapPaidMcpClient } from "@stellarpay/mcp";
-import { NETWORKS } from "@stellarpay/core";
+import { createPayingFetch, type PayEvent } from "@stellarpay-sdk/client";
+import { payingHttpTransport, wrapPaidMcpClient } from "@stellarpay-sdk/mcp";
+import { NETWORKS } from "@stellarpay-sdk/core";
 import { readEnv } from "./env.js";
 import { createNarrator } from "./narrate.js";
 import { buildEconomy, scriptedTour } from "./economy.js";
@@ -2228,7 +2228,7 @@ git commit -m "feat(examples): autonomous buying agent — Claude-driven with sc
  */
 import { Account, Asset, Keypair, Networks, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
 import { USDC_SAC_TESTNET } from "@stellar/mpp";
-import { submitViaChannels } from "@stellarpay/shared";
+import { submitViaChannels } from "@stellarpay-sdk/shared";
 
 try {
   process.loadEnvFile();
@@ -2531,8 +2531,8 @@ Record all four domains + which vars are set where.
  * dashboard health read against the Railway domains. Uses the funded buyer from .env.
  * Run before declaring README links final, and again before judging.
  */
-import { createPayingFetch } from "@stellarpay/client";
-import { NETWORKS } from "@stellarpay/shared";
+import { createPayingFetch } from "@stellarpay-sdk/client";
+import { NETWORKS } from "@stellarpay-sdk/shared";
 
 try {
   process.loadEnvFile();

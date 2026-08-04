@@ -1,5 +1,5 @@
 {
-  "name": "@stellarpay/mcp",
+  "name": "@stellarpay-sdk/mcp",
   "version": "0.1.0",
   "description": "Per-tool-call payments for MCP servers via Stellar MPP, plus a paying MCP client wrapper.",
   "keywords": ["stellar", "x402", "mpp", "payments", "paywall", "mcp", "model-context-protocol"],
@@ -28,7 +28,7 @@
   "dependencies": {
     "@stellar/mpp": "^0.7.1",
     "@stellar/stellar-sdk": "16.2.0",
-    "@stellarpay/core": "workspace:*",
+    "@stellarpay-sdk/core": "workspace:*",
     "mppx": "0.6.31"
   },
   "peerDependencies": {

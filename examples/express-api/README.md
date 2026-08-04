@@ -5,7 +5,7 @@ asset authorized-supply and holder counts, top-of-book market data, and account 
 straight from Horizon at request time. Nothing is cached, mocked, or seeded; if the ledger
 moves between two calls, the answers move with it.
 
-Two of its routes are paywalled with [`@stellarpay/express`](../../packages/express), one per
+Two of its routes are paywalled with [`@stellarpay-sdk/express`](../../packages/express), one per
 payment scheme, so a single service demonstrates both halves of the SDK:
 
 - `GET /report/*` settles over **x402** (facilitator-verified `PAYMENT-SIGNATURE`).
@@ -58,13 +58,13 @@ A paid route answers `402` with a challenge header — `payment-required` for th
 curl -i localhost:4601/report/USDC/GD47GCJEFID5BZUWJHSKQR22LEIQJI55FFK3S6V4DSINUET76GRXTSEP
 ```
 
-## Pay it with `@stellarpay/client`
+## Pay it with `@stellarpay-sdk/client`
 
 `createPayingFetch` is a drop-in `fetch` that answers the challenge, signs, settles, and
 replays the request — both schemes, auto-detected from the response headers:
 
 ```ts
-import { createPayingFetch } from "@stellarpay/client";
+import { createPayingFetch } from "@stellarpay-sdk/client";
 
 const payingFetch = createPayingFetch({
   secret: process.env.BUYER_SECRET,          // Stellar secret seed (S…), funded with testnet USDC

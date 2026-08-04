@@ -1,4 +1,4 @@
-import { SpendLimitExceeded } from "@stellarpay/client";
+import { SpendLimitExceeded } from "@stellarpay-sdk/client";
 import type { Narrator } from "./narrate.js";
 
 /**

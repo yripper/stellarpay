@@ -8,7 +8,7 @@ on-chain, and narrates every purchase to the dashboard feed as it happens.
 
 Nobody approves the payments. There is no checkout, no API key, no invoice. The agent
 decides what is worth buying, the paywall answers `402`, and
-[`@stellarpay/client`](../../packages/client) settles it — in the middle of a tool call.
+[`@stellarpay-sdk/client`](../../packages/client) settles it — in the middle of a tool call.
 
 This is the last service in the [stellarpay](../../README.md) demo lineup and the one the
 dashboard's **▶ UNLEASH THE AGENT** button drives.
@@ -63,7 +63,7 @@ Every run builds a fresh paying `fetch` with hard limits:
 const LIMITS = { maxPerCall: "$0.05", maxTotal: "$0.25" };
 ```
 
-They are enforced client-side by `@stellarpay/client`'s `SpendTracker` before anything is
+They are enforced client-side by `@stellarpay-sdk/client`'s `SpendTracker` before anything is
 signed, and they reset per run. When a purchase would breach one, the SDK emits a `blocked`
 event and throws `SpendLimitExceeded` — the agent narrates the refusal and carries on with
 the rest of the mission. **A refused purchase on the feed is the guardrail working**, not

@@ -25,10 +25,10 @@
 import { serve, type ServerType } from "@hono/node-server";
 import { Hono } from "hono";
 import { USDC_SAC_TESTNET } from "@stellar/mpp";
-import { stellarpayHono } from "@stellarpay/hono";
-import { createPayingFetch, type PayEvent } from "@stellarpay/client";
-import type { Receipt, StellarpayConfig } from "@stellarpay/core";
-import { NETWORKS } from "@stellarpay/shared";
+import { stellarpayHono } from "@stellarpay-sdk/hono";
+import { createPayingFetch, type PayEvent } from "@stellarpay-sdk/client";
+import type { Receipt, StellarpayConfig } from "@stellarpay-sdk/core";
+import { NETWORKS } from "@stellarpay-sdk/shared";
 
 // --- env ---------------------------------------------------------------------------------
 

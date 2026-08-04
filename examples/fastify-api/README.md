@@ -13,7 +13,7 @@ routes are declared:
 
 ```ts
 import Fastify from "fastify";
-import { stellarpayFastify } from "@stellarpay/fastify";
+import { stellarpayFastify } from "@stellarpay-sdk/fastify";
 
 const app = Fastify();
 await app.register(stellarpayFastify, {
@@ -70,13 +70,13 @@ The paid route answers `402` with an MPP challenge header:
 curl -i localhost:4603/stats/fees
 ```
 
-## Pay it with `@stellarpay/client`
+## Pay it with `@stellarpay-sdk/client`
 
 `createPayingFetch` is a drop-in `fetch` that answers the MPP challenge, signs, settles, and
 replays the request:
 
 ```ts
-import { createPayingFetch } from "@stellarpay/client";
+import { createPayingFetch } from "@stellarpay-sdk/client";
 
 const payingFetch = createPayingFetch({
   secret: process.env.BUYER_SECRET,          // Stellar secret seed (S…), funded with testnet USDC

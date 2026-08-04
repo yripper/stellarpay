@@ -8,7 +8,7 @@ import { toolPayments } from "../src/index.js";
 // branch offline isn't feasible with the genuine engine — a real 200 requires a valid
 // signed credential verified against the challenge via Soroban RPC, which needs live
 // network access — so the engine is stubbed at the module boundary instead. Mirrors
-// `@stellarpay/core`'s `test/stellarpayErrorBoundary.test.ts`, which stubs
+// `@stellarpay-sdk/core`'s `test/stellarpayErrorBoundary.test.ts`, which stubs
 // `createMppChargeModule` the same way to drive `stellarpay()`'s `onPayment` isolation
 // through a controlled "pass" outcome. `vi.mock` calls are hoisted above imports by
 // Vitest's transform, so declaration order doesn't matter; `vi.hoisted` is required only

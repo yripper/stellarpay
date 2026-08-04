@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from "hono";
-import { stellarpay, type Stellarpay } from "@stellarpay/core";
+import { stellarpay, type Stellarpay } from "@stellarpay-sdk/core";
 
 /** One-line Hono paywall: app.use("*", stellarpayHono(config)). */
 export function stellarpayHono(configOrInstance: unknown): MiddlewareHandler {

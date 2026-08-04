@@ -10,8 +10,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@stellarpay/core": "workspace:*",
-    "@stellarpay/hono": "workspace:*",
+    "@stellarpay-sdk/core": "workspace:*",
+    "@stellarpay-sdk/hono": "workspace:*",
     "@hono/node-server": "^2.0.12",
     "hono": "^4",
     "tsx": "^4.19.0"

@@ -1,4 +1,4 @@
-# @stellarpay/client
+# @stellarpay-sdk/client
 
 Agent-side auto-paying `fetch`. `createPayingFetch(config)` returns a `fetch`-compatible
 function that probes a request, and on a `402`, detects whether the challenge is **x402** or
@@ -13,7 +13,7 @@ Part of the [stellarpay](../../README.md) SDK.
 Not yet published — see [PUBLISHING.md](../../PUBLISHING.md). Once published:
 
 ```sh
-npm install @stellarpay/client
+npm install @stellarpay-sdk/client
 ```
 
 ## Minimal working example
@@ -24,7 +24,7 @@ injected in-process transport for a real network call so it's runnable standalon
 server built with an [adapter](../../README.md#packages) from this SDK:
 
 ```ts
-import { createPayingFetch, SpendLimitExceeded } from "@stellarpay/client";
+import { createPayingFetch, SpendLimitExceeded } from "@stellarpay-sdk/client";
 
 const payFetch = createPayingFetch({
   secret: process.env.AGENT_SECRET!, // S... testnet secret key — or pass `keypair` instead

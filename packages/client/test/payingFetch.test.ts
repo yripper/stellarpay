@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { Keypair } from "@stellar/stellar-sdk";
-import { stellarpay } from "@stellarpay/core";
+import { stellarpay } from "@stellarpay-sdk/core";
 import { createPayingFetch, SpendLimitExceeded, MissingSignerConfig } from "../src/index.js";
 
 const server = stellarpay({

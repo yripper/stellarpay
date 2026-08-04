@@ -10,8 +10,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@stellarpay/core": "workspace:*",
-    "@stellarpay/express": "workspace:*",
+    "@stellarpay-sdk/core": "workspace:*",
+    "@stellarpay-sdk/express": "workspace:*",
     "express": "^4",
     "tsx": "^4.19.0"
   },

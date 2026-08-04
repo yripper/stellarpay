@@ -1,6 +1,6 @@
 import express, { type Express } from "express";
-import { stellarpayExpress } from "@stellarpay/express";
-import { NETWORKS, type StellarpayConfig } from "@stellarpay/core";
+import { stellarpayExpress } from "@stellarpay-sdk/express";
+import { NETWORKS, type StellarpayConfig } from "@stellarpay-sdk/core";
 import { fetchAccountDeepDive, fetchAssetReport, fetchAssetSummary, type IntelResult } from "./intel.js";
 import { createReceiptReporter } from "./reportReceipt.js";
 import type { Env } from "./env.js";
@@ -72,7 +72,7 @@ export function buildApp(env: Env): Express {
         "GET /report/:code/:issuer": { price: PRICES.report, scheme: "x402", what: "full asset report + live order-book" },
         "GET /deep-dive/:account": { price: PRICES.deepDive, scheme: "mpp-charge", what: "balances, flags, recent payments" },
       },
-      hint: "curl a paid route to receive a 402 challenge; pay it with @stellarpay/client.",
+      hint: "curl a paid route to receive a 402 challenge; pay it with @stellarpay-sdk/client.",
     });
   });
   app.get("/healthz", (_req, res) => {

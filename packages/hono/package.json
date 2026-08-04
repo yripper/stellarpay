@@ -1,5 +1,5 @@
 {
-  "name": "@stellarpay/hono",
+  "name": "@stellarpay-sdk/hono",
   "version": "0.1.0",
   "description": "One-line Hono middleware adapter for the Stellarpay payment paywall.",
   "keywords": ["stellar", "x402", "mpp", "payments", "paywall", "hono", "middleware"],
@@ -26,7 +26,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@stellarpay/core": "workspace:*"
+    "@stellarpay-sdk/core": "workspace:*"
   },
   "peerDependencies": {
     "hono": ">=4"

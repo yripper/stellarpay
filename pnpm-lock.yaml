@@ -20,16 +20,16 @@ importers:
       '@stellar/stellar-sdk':
         specifier: 16.2.0
         version: 16.2.0
-      '@stellarpay/client':
+      '@stellarpay-sdk/client':
         specifier: workspace:*
         version: link:packages/client
-      '@stellarpay/core':
+      '@stellarpay-sdk/core':
         specifier: workspace:*
         version: link:packages/core
-      '@stellarpay/hono':
+      '@stellarpay-sdk/hono':
         specifier: workspace:*
         version: link:packages/hono
-      '@stellarpay/shared':
+      '@stellarpay-sdk/shared':
         specifier: workspace:*
         version: link:packages/shared
       '@types/node':
@@ -62,13 +62,13 @@ importers:
       '@stellar/stellar-sdk':
         specifier: 16.2.0
         version: 16.2.0
-      '@stellarpay/client':
+      '@stellarpay-sdk/client':
         specifier: workspace:*
         version: link:../../packages/client
-      '@stellarpay/core':
+      '@stellarpay-sdk/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@stellarpay/mcp':
+      '@stellarpay-sdk/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
       hono:
@@ -112,10 +112,10 @@ importers:
 
   examples/express-api:
     dependencies:
-      '@stellarpay/core':
+      '@stellarpay-sdk/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@stellarpay/express':
+      '@stellarpay-sdk/express':
         specifier: workspace:*
         version: link:../../packages/express
       express:
@@ -140,10 +140,10 @@ importers:
 
   examples/fastify-api:
     dependencies:
-      '@stellarpay/core':
+      '@stellarpay-sdk/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@stellarpay/fastify':
+      '@stellarpay-sdk/fastify':
         specifier: workspace:*
         version: link:../../packages/fastify
       fastify:
@@ -165,10 +165,10 @@ importers:
       '@hono/node-server':
         specifier: ^2.0.12
         version: 2.0.12(hono@4.12.33)
-      '@stellarpay/core':
+      '@stellarpay-sdk/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@stellarpay/hono':
+      '@stellarpay-sdk/hono':
         specifier: workspace:*
         version: link:../../packages/hono
       hono:
@@ -193,7 +193,7 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
         version: 1.30.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)
-      '@stellarpay/mcp':
+      '@stellarpay-sdk/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
       express:
@@ -224,7 +224,7 @@ importers:
       '@stellar/stellar-sdk':
         specifier: 16.2.0
         version: 16.2.0
-      '@stellarpay/core':
+      '@stellarpay-sdk/core':
         specifier: workspace:*
         version: link:../core
       '@x402/core':
@@ -263,7 +263,7 @@ importers:
 
   packages/express:
     dependencies:
-      '@stellarpay/core':
+      '@stellarpay-sdk/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -285,7 +285,7 @@ importers:
 
   packages/fastify:
     dependencies:
-      '@stellarpay/core':
+      '@stellarpay-sdk/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -298,7 +298,7 @@ importers:
 
   packages/hono:
     dependencies:
-      '@stellarpay/core':
+      '@stellarpay-sdk/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -317,7 +317,7 @@ importers:
       '@stellar/stellar-sdk':
         specifier: 16.2.0
         version: 16.2.0
-      '@stellarpay/core':
+      '@stellarpay-sdk/core':
         specifier: workspace:*
         version: link:../core
       mppx:
@@ -336,7 +336,7 @@ importers:
       '@stellar/stellar-sdk':
         specifier: 16.2.0
         version: 16.2.0
-      '@stellarpay/core':
+      '@stellarpay-sdk/core':
         specifier: workspace:*
         version: link:../core
 

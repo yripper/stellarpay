@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { stellarpayHono } from "@stellarpay/hono";
-import type { StellarpayConfig } from "@stellarpay/core";
+import { stellarpayHono } from "@stellarpay-sdk/hono";
+import type { StellarpayConfig } from "@stellarpay-sdk/core";
 import { fetchWhales } from "./whales.js";
 import { createReceiptReporter } from "./reportReceipt.js";
 import type { Env } from "./env.js";

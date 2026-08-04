@@ -1,5 +1,5 @@
 /**
- * Public type surface for `@stellarpay/core`. Every later task in the SDK
+ * Public type surface for `@stellarpay-sdk/core`. Every later task in the SDK
  * compiles against these exact names, field names, and optionality — treat
  * this file as a contract, not an implementation detail.
  *

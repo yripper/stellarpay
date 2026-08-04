@@ -3,7 +3,7 @@ import { Mcp } from "mppx";
 import { stellar } from "@stellar/mpp/charge/server";
 import { USDC_SAC_TESTNET } from "@stellar/mpp";
 import { Keypair } from "@stellar/stellar-sdk";
-import { dollarToDecimal } from "@stellarpay/core";
+import { dollarToDecimal } from "@stellarpay-sdk/core";
 
 /**
  * Input shape mppx's `Transport.mcpSdk()` hands to every route handler: the MCP SDK tool
@@ -33,15 +33,15 @@ const TX_HASH_PATTERN = /^[0-9a-f]{64}$/;
 /**
  * Extracts a Stellar tx hash from an mppx settlement receipt's `reference` field.
  *
- * Deliberately duplicated, not imported, from `@stellarpay/core`'s
+ * Deliberately duplicated, not imported, from `@stellarpay-sdk/core`'s
  * `txHashFromReceiptHeader` (`packages/core/src/schemes/mppCharge.ts:28-39`): that helper
  * base64url-decodes and JSON-parses an HTTP `Payment-Receipt` header first, but the
  * mcp-sdk transport's receipt (`mppx`'s `Mcp.Receipt`, `mppx/dist/Mcp.d.ts`) is already a
  * parsed object attached under `_meta[Mcp.receiptMetaKey]` (see `guard` below) — there is
  * no header or base64url envelope to decode here, so the HTTP helper's signature doesn't
- * fit. `@stellarpay/core`'s public surface is a single `"."` export
+ * fit. `@stellarpay-sdk/core`'s public surface is a single `"."` export
  * (`packages/core/package.json`'s `exports`), which doesn't re-export the underlying
- * hash-shape regex on its own, and `@stellarpay/mcp` is a published package that must not
+ * hash-shape regex on its own, and `@stellarpay-sdk/mcp` is a published package that must not
  * reach past a sibling package's public entry to grab an internal — so the ~3-line check
  * is copied here rather than coupling the two packages over an unpublished path.
  *
@@ -64,7 +64,7 @@ export type ToolPaymentReceipt = {
   /**
    * On-chain settlement transaction hash (64-char lowercase hex), when the settled
    * receipt's `reference` is genuinely hash-shaped. Populated in `guard` via a throwaway
-   * `withReceipt(...)` probe — mirrors `@stellarpay/core`'s mpp-charge leg
+   * `withReceipt(...)` probe — mirrors `@stellarpay-sdk/core`'s mpp-charge leg
    * (`packages/core/src/schemes/mppCharge.ts:84-85`) so the dashboard can link every paid
    * MCP tool call to stellar.expert the same way it already does for HTTP-settled routes.
    * `undefined` whenever the reference can't be confidently decoded — see
@@ -118,7 +118,7 @@ export type ToolPayments = {
  * handler's own result with the payment receipt under
  * `_meta["org.paymentauth/receipt"]` (`mppx/dist/mcp-sdk/server/Transport.js:66-81`).
  *
- * Replay protection is backed by `Store.memory()` — see `@stellarpay/core`'s
+ * Replay protection is backed by `Store.memory()` — see `@stellarpay-sdk/core`'s
  * `createMppChargeModule` (`packages/core/src/schemes/mppCharge.ts`) for the same
  * single-process-topology caveat, which applies identically here.
  */
@@ -130,7 +130,7 @@ export function toolPayments(config: ToolPaymentsConfig): ToolPayments {
       stellar.charge({
         recipient: config.payTo,
         // Fixed to testnet USDC regardless of `config.network`, matching
-        // `@stellarpay/core`'s `createMppChargeModule` precedent
+        // `@stellarpay-sdk/core`'s `createMppChargeModule` precedent
         // (`packages/core/src/schemes/mppCharge.ts:33`) — the brief's produced interface
         // has no per-price asset override, so there is no non-fabricated way to pick a
         // different SAC address for pubnet without inventing a field. Documented as a
@@ -158,7 +158,7 @@ export function toolPayments(config: ToolPaymentsConfig): ToolPayments {
         const result = await payment.charge({ amount, description: `MCP tool: ${toolName}` })(extra as McpToolExtra);
         if (result.status === 402) throw result.challenge; // McpError, code -32042 (Mcp.d.ts:7)
         // Probe the settlement receipt with a throwaway `Response`, the same technique
-        // `@stellarpay/core`'s mpp-charge leg uses for the HTTP transport
+        // `@stellarpay-sdk/core`'s mpp-charge leg uses for the HTTP transport
         // (`packages/core/src/schemes/mppCharge.ts:77`), adapted to the mcp-sdk transport.
         // `withReceipt` is a pure function closing over the charge's already-settled
         // `receiptData` (`mppx/dist/server/Mppx.js:458-485`'s `success()`); it never
@@ -185,7 +185,7 @@ export function toolPayments(config: ToolPaymentsConfig): ToolPayments {
         } catch (hookError) {
           // A misbehaving user hook must never turn an already-paid call into a hard
           // error for the caller — the charge already settled, so the client should
-          // still get its tool result. Mirrors @stellarpay/core's identical isolation
+          // still get its tool result. Mirrors @stellarpay-sdk/core's identical isolation
           // for its own `onPayment` hook (packages/core/src/stellarpay.ts:96-101).
           // Logged server-side only, matching that precedent's own comment.
           console.error("[stellarpay/mcp] onPayment hook threw; ignoring", hookError);

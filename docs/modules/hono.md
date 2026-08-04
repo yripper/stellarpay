@@ -1,8 +1,8 @@
-# @stellarpay/hono — Hono Middleware Adapter
+# @stellarpay-sdk/hono — Hono Middleware Adapter
 
 ## Purpose
 
-Hono middleware adapter for the Stellarpay payment SDK. Wraps `@stellarpay/core`'s
+Hono middleware adapter for the Stellarpay payment SDK. Wraps `@stellarpay-sdk/core`'s
 `Stellarpay` orchestrator as a one-line Hono middleware: `app.use("*", stellarpayHono(config))`.
 Hono apps already work with Web standard Request/Response types, so the adapter directly dispatches
 each request to the core paywall handler and manages the routing: direct response (402 challenge, error),
@@ -36,7 +36,7 @@ pass-through with settlement headers, or next().
 
 ## Dependencies
 
-- `@stellarpay/core` (workspace) — `stellarpay()` function and `Stellarpay` type.
+- `@stellarpay-sdk/core` (workspace) — `stellarpay()` function and `Stellarpay` type.
 - `hono` (peerDependency >=4) — `MiddlewareHandler`, context type signatures; dev-installed
   for tests.
 
@@ -67,7 +67,7 @@ pass-through with settlement headers, or next().
   (`packages/hono/test/hono.test.ts:11-19`):
   - "free passes" — unmatched routes pass through to the handler (200, correct body)
   - "paid gates 402" — matched paid routes return 402
-- Run: `pnpm --filter @stellarpay/hono test` (or `pnpm test` from repo root).
+- Run: `pnpm --filter @stellarpay-sdk/hono test` (or `pnpm test` from repo root).
 
 ## Verified Against
 

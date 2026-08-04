@@ -7,7 +7,7 @@ payment *is* the tool call.
 
 This is the agentic-payments demo in the [stellarpay](../../README.md) lineup. The other
 example services sell HTTP routes; this one sells **tool calls**, over MCP's
-Streamable HTTP transport, using [`@stellarpay/mcp`](../../packages/mcp)'s `toolPayments()`.
+Streamable HTTP transport, using [`@stellarpay-sdk/mcp`](../../packages/mcp)'s `toolPayments()`.
 
 See [`docs/modules/examples.md`](../../docs/modules/examples.md) for the full module doc.
 
@@ -77,14 +77,14 @@ can connect and use `network_status` immediately. Priced tools will surface thei
 challenge to a client that cannot pay — the tool list, descriptions, and prices are still
 fully visible, which is what makes the paywall legible instead of mysterious.
 
-## Pay for a tool call with `@stellarpay/mcp`
+## Pay for a tool call with `@stellarpay-sdk/mcp`
 
 `wrapPaidMcpClient` wraps any MCP SDK client so `callTool` answers the challenge, signs,
 settles, and replays the call automatically:
 
 ```ts
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { payingHttpTransport, wrapPaidMcpClient } from "@stellarpay/mcp";
+import { payingHttpTransport, wrapPaidMcpClient } from "@stellarpay-sdk/mcp";
 
 const client = new Client({ name: "my-agent", version: "1.0.0" });
 await client.connect(payingHttpTransport("http://localhost:4604/mcp", fetch));

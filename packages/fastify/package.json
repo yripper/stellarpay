@@ -1,5 +1,5 @@
 {
-  "name": "@stellarpay/fastify",
+  "name": "@stellarpay-sdk/fastify",
   "version": "0.1.0",
   "description": "One-line Fastify plugin adapter for the Stellarpay payment paywall.",
   "keywords": ["stellar", "x402", "mpp", "payments", "paywall", "fastify", "plugin"],
@@ -26,7 +26,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@stellarpay/core": "workspace:*"
+    "@stellarpay-sdk/core": "workspace:*"
   },
   "peerDependencies": {
     "fastify": ">=4"

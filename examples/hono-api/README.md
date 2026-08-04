@@ -4,7 +4,7 @@ The entire difference between this API being open and being paid:
 
 ```diff
  import { Hono } from "hono";
-+import { stellarpayHono } from "@stellarpay/hono";
++import { stellarpayHono } from "@stellarpay-sdk/hono";
 
  const app = new Hono();
 +app.use("*", stellarpayHono({
@@ -82,13 +82,13 @@ The paid route answers `402` with an x402 challenge header:
 curl -i localhost:4602/alerts/whales
 ```
 
-## Pay it with `@stellarpay/client`
+## Pay it with `@stellarpay-sdk/client`
 
 `createPayingFetch` is a drop-in `fetch` that answers the x402 challenge, signs, settles, and
 replays the request:
 
 ```ts
-import { createPayingFetch } from "@stellarpay/client";
+import { createPayingFetch } from "@stellarpay-sdk/client";
 
 const payingFetch = createPayingFetch({
   secret: process.env.BUYER_SECRET,          // Stellar secret seed (S…), funded with testnet USDC

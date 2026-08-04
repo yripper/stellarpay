@@ -1,5 +1,5 @@
 import type { NextFunction, Request as ExReq, RequestHandler, Response as ExRes } from "express";
-import { stellarpay, type Stellarpay } from "@stellarpay/core";
+import { stellarpay, type Stellarpay } from "@stellarpay-sdk/core";
 
 /**
  * Converts an Express Request to a Web standard Request.

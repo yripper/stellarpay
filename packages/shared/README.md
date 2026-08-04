@@ -1,7 +1,7 @@
-# @stellarpay/shared (internal)
+# @stellarpay-sdk/shared (internal)
 
 Private, unpublished workspace package. Its network-preset and price/base-unit conversion
-helpers moved into [`@stellarpay/core`](../core/README.md)'s public exports (`packages/core/src/internal/`)
+helpers moved into [`@stellarpay-sdk/core`](../core/README.md)'s public exports (`packages/core/src/internal/`)
 so the publishable packages that need them don't depend on this unpublishable package at
 runtime — this package re-exports them unchanged for backward compatibility. What's left here
 is `submitViaChannels`, OpenZeppelin Channels submission logic — currently **dead code**, not

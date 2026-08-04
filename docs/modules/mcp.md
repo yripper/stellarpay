@@ -1,4 +1,4 @@
-# @stellarpay/mcp — Paid MCP Tools (Server Guard + Paying Client)
+# @stellarpay-sdk/mcp — Paid MCP Tools (Server Guard + Paying Client)
 
 ## Purpose
 
@@ -63,11 +63,11 @@ not a new payment protocol.
 - `TX_HASH_PATTERN` (`server.ts:31`) and `txHashFromReference(reference)`
   (`server.ts:52-54`) — the 64-char-lowercase-hex validator `guard` runs a probed
   settlement receipt's `reference` through before ever setting `ToolPaymentReceipt.txHash`.
-  Deliberately duplicated (not imported) from `@stellarpay/core`'s
+  Deliberately duplicated (not imported) from `@stellarpay-sdk/core`'s
   `txHashFromReceiptHeader` (`packages/core/src/schemes/mppCharge.ts:28-39`) — see the
   Gotchas entry for why sharing it wasn't clean.
 
-This mirrors `@stellarpay/client`'s convention (`docs/modules/client.md`'s Public
+This mirrors `@stellarpay-sdk/client`'s convention (`docs/modules/client.md`'s Public
 Surface section): the package's contract is a small number of top-level functions, not
 their internal type plumbing.
 
@@ -81,7 +81,7 @@ their internal type plumbing.
   1. Looks up `config.prices[toolName]`; if unset, **returns `handler` unwrapped**
      (`server.ts:151`) — an unpriced tool never touches mppx at all, not merely "always
      succeeds."
-  2. Otherwise converts the price via `@stellarpay/core`'s `dollarToDecimal`
+  2. Otherwise converts the price via `@stellarpay-sdk/core`'s `dollarToDecimal`
      (`server.ts:152`) and returns an async wrapper that:
      - Calls `payment.charge({ amount, description })(extra as McpToolExtra)`
        (`server.ts:158`) — the single explicit cast from the guard's public `extra:
@@ -109,8 +109,8 @@ their internal type plumbing.
 
 ## Dependencies
 
-- `mppx` — pinned **exact** `0.6.31` (controller ruling, matches `@stellarpay/core` and
-  `@stellarpay/client`); `mppx/server` (`Mppx`, `Store`, `Transport`) and
+- `mppx` — pinned **exact** `0.6.31` (controller ruling, matches `@stellarpay-sdk/core` and
+  `@stellarpay-sdk/client`); `mppx/server` (`Mppx`, `Store`, `Transport`) and
   `mppx/mcp-sdk/client` (`McpClient`). `server.ts` also imports `Mcp` from mppx's root
   `"."` export (`server.ts:2`; `mppx/dist/index.js`'s `export * as Mcp from './Mcp.js'`)
   for `Mcp.receiptMetaKey` — the `"org.paymentauth/receipt"` `_meta` key the mcp-sdk
@@ -124,13 +124,13 @@ their internal type plumbing.
   emits a Soroban credentials XDR variant `15.1.0` can't parse, see `docs/modules/core.md`'s
   "stellar-sdk version" section) — `Keypair.fromSecret` for the optional `sponsorSecret`
   fee-payer.
-- `@stellarpay/core` (workspace, runtime dependency) — `dollarToDecimal`, a plain utility
+- `@stellarpay-sdk/core` (workspace, runtime dependency) — `dollarToDecimal`, a plain utility
   export used internally in `server.ts` only; never appears in a public type signature
   (`ToolPaymentsConfig.prices` and `ToolPaymentReceipt.amount` are plain
   `string`/`Record<string, string>`). This package does not call `stellarpay()` or
   `parseConfig` — see the Purpose section above and the root README's Architecture
-  section for why this doesn't contradict "`@stellarpay/mcp` doesn't route through
-  `@stellarpay/core`'s orchestrator."
+  section for why this doesn't contradict "`@stellarpay-sdk/mcp` doesn't route through
+  `@stellarpay-sdk/core`'s orchestrator."
 - `@modelcontextprotocol/sdk` — **peerDependency** (`>=1.25.0`, matching mppx's own peer
   spec, `mppx/package.json`'s `peerDependencies`), dev-installed (`^1.30.0`) for
   typechecking/tests. `client.ts` imports `Client` (type-only) and
@@ -173,7 +173,7 @@ their internal type plumbing.
   swallowing the error rather than letting it propagate — the charge has already been
   accepted by `payment.charge(...)` at that point, so a metrics/DB write failure inside
   the hook must not deny the client its paid-for tool result. Mirrors
-  `@stellarpay/core`'s identical isolation for its own `onPayment` hook
+  `@stellarpay-sdk/core`'s identical isolation for its own `onPayment` hook
   (`packages/core/src/stellarpay.ts:96-101`, same swallow-and-log pattern). Proven by
   `test/onPaymentIsolation.test.ts`, which stubs the `mppx/server` module boundary (real
   `mppx` engine can't reach `status: 200` offline — see Testing) to drive a throwing
@@ -219,7 +219,7 @@ their internal type plumbing.
   be re-verified after a redeploy or crash) and is not shared across processes or
   instances, so in a horizontally-scaled or serverless deployment a credential spent
   against one instance can still replay against a sibling. Identical to
-  `@stellarpay/core`'s `createMppChargeModule` caveat
+  `@stellarpay-sdk/core`'s `createMppChargeModule` caveat
   (`packages/core/src/schemes/mppCharge.ts`'s own doc comment) — single-process
   deployments are the supported v0.1 topology for `toolPayments` too; a pluggable
   `Store.AtomicStore` (e.g. Redis-backed) is on the roadmap for multi-instance
@@ -243,7 +243,7 @@ their internal type plumbing.
   second brief test (`"passes through tools without a configured price"`) asserts the
   original mock `handler` was called, which only holds because no wrapper intercepts it.
 - **`currency` is fixed to `USDC_SAC_TESTNET` regardless of `config.network`.** Mirrors
-  `@stellarpay/core`'s `createMppChargeModule` precedent
+  `@stellarpay-sdk/core`'s `createMppChargeModule` precedent
   (`packages/core/src/schemes/mppCharge.ts:33`, same fixed-currency choice with the same
   comment pattern). The brief's produced `ToolPaymentsConfig` has no per-tool asset
   override field, so there's no non-fabricated way to select a different SAC address for
@@ -282,7 +282,7 @@ their internal type plumbing.
   credential is actually verified, and these tests never supply one.
 - `test/onPaymentIsolation.test.ts` — a post-review addition (see Gotchas). Stubs
   `mppx/server`'s `Mppx.create` at the module boundary (`vi.mock`, mirroring
-  `@stellarpay/core`'s `test/stellarpayErrorBoundary.test.ts`) to force a `status: 200`
+  `@stellarpay-sdk/core`'s `test/stellarpayErrorBoundary.test.ts`) to force a `status: 200`
   response — unreachable offline against the real engine, which requires a genuinely
   signed credential verified via Soroban RPC — then asserts a throwing `onPayment` hook
   still lets the guarded call resolve with the handler's own result.
@@ -296,7 +296,7 @@ their internal type plumbing.
   (not `undefined` — absent as a key) for four malformed-`reference` shapes (missing,
   wrong length, uppercase/non-hex, non-string); and the handler's real `content` array
   reaching the caller untouched by the throwaway probe.
-- Run: `pnpm --filter @stellarpay/mcp test` (or `pnpm test` from repo root).
+- Run: `pnpm --filter @stellarpay-sdk/mcp test` (or `pnpm test` from repo root).
 
 ## Verified Against
 
@@ -309,15 +309,15 @@ their internal type plumbing.
   gotcha, the compiled `.js` under `packages/mcp/node_modules/` (`mppx@0.6.31`,
   `@stellar/mpp@0.7.1`, `@modelcontextprotocol/sdk@1.30.0`) — not just the `.d.ts`, which
   doesn't show the dynamic-import fallback or the challenge/receipt construction logic.
-- All 4 mcp-package tests (2 files) pass; `pnpm --filter @stellarpay/mcp typecheck`/`build`
+- All 4 mcp-package tests (2 files) pass; `pnpm --filter @stellarpay-sdk/mcp typecheck`/`build`
   both exit 0 with zero diagnostics; root suite (19 files / 88 tests) passes; root
   `typecheck`/`build` succeed across all 7 packages.
 - 2026-08-03 (final fix wave): `recipient` renamed to `payTo` on `ToolPaymentsConfig` for
-  cross-package naming consistency with `@stellarpay/core`'s `StellarpayConfig.payTo`;
-  `dollarToDecimal` import switched from `@stellarpay/shared` to the now-public
-  `@stellarpay/core` export (`server.ts`'s own line numbers are unchanged — both were
+  cross-package naming consistency with `@stellarpay-sdk/core`'s `StellarpayConfig.payTo`;
+  `dollarToDecimal` import switched from `@stellarpay-sdk/shared` to the now-public
+  `@stellarpay-sdk/core` export (`server.ts`'s own line numbers are unchanged — both were
   same-line swaps). `mcp` package test count unchanged (4 tests, 2 files); root suite grew
-  to 19 files / 88 tests from `@stellarpay/core`'s moved-in `price.test.ts`/`networks.test.ts`
+  to 19 files / 88 tests from `@stellarpay-sdk/core`'s moved-in `price.test.ts`/`networks.test.ts`
   and new `config.test.ts` cases (see `docs/modules/core.md`), not from anything in this
   package.
 - 2026-08-04 (MCP tool-payment on-chain provability): added `ToolPaymentReceipt.txHash`
@@ -333,7 +333,7 @@ their internal type plumbing.
   `withReceipt(...)` is a pure, side-effect-free read of the charge's closed-over
   receipt, safe to call a second, throwaway time before the real attach call (see the new
   Gotchas entry). `mcp` package test count: 4 → 10 tests (2 → 3 files); root suite: 154 →
-  160 tests (29 → 30 files); `pnpm typecheck` and `pnpm --filter @stellarpay/mcp
+  160 tests (29 → 30 files); `pnpm typecheck` and `pnpm --filter @stellarpay-sdk/mcp
   build`/`pnpm --filter @stellarpay-examples/mcp-server typecheck` all exit 0. Also
   updated `examples/mcp-server/src/mcp.ts`'s `onPayment` adapter (`mcp.ts:27-40`) to
   spread `txHash` through to the dashboard receipt and corrected its stale "`raw` is

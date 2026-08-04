@@ -12,23 +12,23 @@ and the hub: four paid API services (later tasks) POST payment receipts to its `
 endpoint, and it fans them out to browsers over Server-Sent Events (SSE).
 `examples/express-api` is the second and the flagship seller: a "Stellar Intel" API that
 sells live Horizon-testnet data behind two paywalled routes, one per payment scheme.
-`examples/hono-api` is the third: a "whale alerts" API on `@stellarpay/hono` whose README's
+`examples/hono-api` is the third: a "whale alerts" API on `@stellarpay-sdk/hono` whose README's
 job is to prove the paywall is a 6-line diff onto a plain Hono app — one x402 route selling
 the 10 largest recent native-XLM payments on testnet.
-`examples/fastify-api` is the fourth: a "fee & network stats" API on `@stellarpay/fastify`,
+`examples/fastify-api` is the fourth: a "fee & network stats" API on `@stellarpay-sdk/fastify`,
 the spec's deliberate no-owned-logic example (spec §9) — its only logic beyond the copied,
 already-tested `reportReceipt.ts` is a single guarded Horizon `/fee_stats` mapping. Its one
 route settles over **mpp-charge**, so across the three paid services both payment schemes
 (x402 and mpp-charge) show up more than once.
 `examples/mcp-server` is the fifth and the only one that does not sell HTTP routes at all: a
-"Stellar Intel MCP" server on `@stellarpay/mcp` whose **individual MCP tools** are priced, so
+"Stellar Intel MCP" server on `@stellarpay-sdk/mcp` whose **individual MCP tools** are priced, so
 an AI agent's `tools/call` is what triggers the on-chain micropayment. One tool
 (`network_status`) is free and three are paid, on one server, over one connection.
 `examples/agent` is the sixth and the only **buyer**: an autonomous agent with a funded
 testnet wallet that shops across four of the other five services on demand (it never buys
 from the dashboard, which it only narrates to) — a Claude tool-use loop
-(`claude-sonnet-5`) picks what a rotating mission needs, `@stellarpay/client` and
-`@stellarpay/mcp` settle each purchase on-chain, and every step is narrated to the dashboard
+(`claude-sonnet-5`) picks what a rotating mission needs, `@stellarpay-sdk/client` and
+`@stellarpay-sdk/mcp` settle each purchase on-chain, and every step is narrated to the dashboard
 as `agent-log` events. It is what the dashboard's UNLEASH button drives, and the one service
 that consumes the SDK rather than exposing it.
 
@@ -636,16 +636,16 @@ TS surface consumed by later tasks:
   same usage pattern as `scripts/smoke.ts:229`.
 - `tsx` (^4.19.0) — runtime dependency (not a devDependency): Railway's start command runs
   `tsx src/main.ts` directly, no build step.
-- No `@stellarpay/*` package dependency — the dashboard is transport-agnostic and only
+- No `@stellarpay-sdk/*` package dependency — the dashboard is transport-agnostic and only
   understands the `/ingest` wire contract; it never imports the SDK.
 
 `examples/express-api` (`examples/express-api/package.json:12-23`):
 
 - `express` (^4, resolved `4.22.2`) — a runtime dependency here, and the declared
-  `peerDependency` of `@stellarpay/express` (`packages/express/package.json:31-33`).
-- `@stellarpay/express` (`workspace:*`) — `stellarpayExpress(config)` returns an Express
+  `peerDependency` of `@stellarpay-sdk/express` (`packages/express/package.json:31-33`).
+- `@stellarpay-sdk/express` (`workspace:*`) — `stellarpayExpress(config)` returns an Express
   `RequestHandler` (`packages/express/src/index.ts:36`).
-- `@stellarpay/core` (`workspace:*`) — `StellarpayConfig` (`packages/core/src/types.ts:48`),
+- `@stellarpay-sdk/core` (`workspace:*`) — `StellarpayConfig` (`packages/core/src/types.ts:48`),
   `Receipt` (`types.ts:25`), and the `NETWORKS` presets re-exported from
   `packages/core/src/index.ts:11`.
 - `tsx` (^4.19.0) — runtime dependency, same no-build-step rationale as the dashboard.
@@ -655,9 +655,9 @@ TS surface consumed by later tasks:
 `examples/hono-api` (`examples/hono-api/package.json:12-19`):
 
 - `hono` (^4) + `@hono/node-server` (^2.0.12) — same versions/roles as the dashboard above.
-- `@stellarpay/hono` (`workspace:*`) — `stellarpayHono(config)` returns a Hono
+- `@stellarpay-sdk/hono` (`workspace:*`) — `stellarpayHono(config)` returns a Hono
   `MiddlewareHandler` (`packages/hono/src/index.ts:5`).
-- `@stellarpay/core` (`workspace:*`) — `StellarpayConfig` only, imported as a type
+- `@stellarpay-sdk/core` (`workspace:*`) — `StellarpayConfig` only, imported as a type
   (`server.ts:3`).
 - `tsx` (^4.19.0) — runtime dependency, same no-build-step rationale as the other examples.
 - No HTTP client dependency: Horizon and the dashboard are both reached through the platform's
@@ -667,10 +667,10 @@ TS surface consumed by later tasks:
 `examples/fastify-api` (`examples/fastify-api/package.json:12-16`):
 
 - `fastify` (^4, resolved `4.29.1`) — a runtime dependency here, and the declared
-  `peerDependency` of `@stellarpay/fastify` (`packages/fastify/package.json:31-33`).
-- `@stellarpay/fastify` (`workspace:*`) — `stellarpayFastify(fastify, { config })`, an async
+  `peerDependency` of `@stellarpay-sdk/fastify` (`packages/fastify/package.json:31-33`).
+- `@stellarpay-sdk/fastify` (`workspace:*`) — `stellarpayFastify(fastify, { config })`, an async
   plugin function registered via `app.register()` (`packages/fastify/src/index.ts:53`).
-- `@stellarpay/core` (`workspace:*`) — `StellarpayConfig` only, imported as a type
+- `@stellarpay-sdk/core` (`workspace:*`) — `StellarpayConfig` only, imported as a type
   (`server.ts:3`).
 - `tsx` (^4.19.0) — runtime dependency, same no-build-step rationale as the other examples.
 - No HTTP client dependency: Horizon is reached through the platform's global `fetch`
@@ -681,11 +681,11 @@ TS surface consumed by later tasks:
 
 - `@modelcontextprotocol/sdk` (^1.30.0, resolved `1.30.0`) — a **direct runtime dependency
   here, not just a type dependency**: `main.ts` imports `StreamableHTTPServerTransport` and
-  `mcp.ts` imports `McpServer`, and `@stellarpay/mcp` declares the SDK only as a
+  `mcp.ts` imports `McpServer`, and `@stellarpay-sdk/mcp` declares the SDK only as a
   `peerDependency` (`packages/mcp/package.json`), so the consuming app must supply it. Omitting
   it would not be a compile error — it would make every priced tool's 402 path throw mppx's
   "Missing optional dependency" at runtime (`docs/modules/mcp.md`'s peer-dependency gotcha).
-- `@stellarpay/mcp` (`workspace:*`) — `toolPayments(config)` (`packages/mcp/src/server.ts:125`).
+- `@stellarpay-sdk/mcp` (`workspace:*`) — `toolPayments(config)` (`packages/mcp/src/server.ts:125`).
   The client-side exports (`wrapPaidMcpClient`, `payingHttpTransport`,
   `packages/mcp/src/client.ts:36,55`) are used by this service's README example and by the
   buying agent, not by the server itself.
@@ -696,16 +696,16 @@ TS surface consumed by later tasks:
   (`@modelcontextprotocol/sdk/package.json` peer), and `registerTool`'s `inputSchema` takes a
   raw shape object (`{ account: z.string() }`), not a wrapped `z.object({...})`.
 - `tsx` (^4.19.0) — runtime dependency, same no-build-step rationale as the other examples.
-- No `@stellarpay/core` dependency: this service never builds a `StellarpayConfig`.
+- No `@stellarpay-sdk/core` dependency: this service never builds a `StellarpayConfig`.
 
 `examples/agent` (`examples/agent/package.json:12-22`) — the only example that depends on the
 **client** half of the SDK:
 
 - `@anthropic-ai/sdk` (^0.57.0, resolved `0.57.0`) — the tool-use loop. Only the default
   export (the `Anthropic` client class) and the `Anthropic.*` namespace types are used.
-- `@stellarpay/client` (`workspace:*`) — `createPayingFetch` (`packages/client/src/index.ts:100`),
+- `@stellarpay-sdk/client` (`workspace:*`) — `createPayingFetch` (`packages/client/src/index.ts:100`),
   `PayEvent` (`events.ts:2-7`) and `SpendLimitExceeded` (`limits.ts:5`).
-- `@stellarpay/mcp` (`workspace:*`) — the **client** exports only: `payingHttpTransport` and
+- `@stellarpay-sdk/mcp` (`workspace:*`) — the **client** exports only: `payingHttpTransport` and
   `wrapPaidMcpClient` (`packages/mcp/src/client.ts:55,36`). `toolPayments` (the server half
   `examples/mcp-server` uses) is never imported here.
 - `@modelcontextprotocol/sdk` (^1.30.0, resolved `1.30.0`) — `Client` from
@@ -713,10 +713,10 @@ TS surface consumed by later tasks:
   (`:431`) and the inherited `close()` (`shared/protocol.d.ts:287`).
 - `@stellar/stellar-sdk` (pinned `16.2.0` by the root `pnpm.overrides`) — `Keypair` only,
   to derive the buyer's public key from the secret for the two "my own wallet" buys.
-- `@stellarpay/core` (`workspace:*`) — `NETWORKS` only, for the testnet `rpcUrl`.
+- `@stellarpay-sdk/core` (`workspace:*`) — `NETWORKS` only, for the testnet `rpcUrl`.
 - `hono` (^4) + `@hono/node-server` (^2.0.12) — the two-route trigger API.
 - `tsx` (^4.19.0) — runtime dependency, same no-build-step rationale as the other examples.
-- No seller adapter (`@stellarpay/express|hono|fastify`): this service has no paywall.
+- No seller adapter (`@stellarpay-sdk/express|hono|fastify`): this service has no paywall.
 
 `scripts/setup-demo.ts` (root `package.json:14-27`, not a workspace package):
 
@@ -727,7 +727,7 @@ TS surface consumed by later tasks:
   was added — confirmed by `node -e "require.resolve('@stellar/stellar-sdk')"` failing from
   the repo root before the change and succeeding after.
 - `@stellar/mpp` (^0.7.1) — `USDC_SAC_TESTNET` only, printed in the manual-faucet guidance.
-- `@stellarpay/shared` (`workspace:*`) — `submitViaChannels` (`packages/shared/src/channels.ts:22`,
+- `@stellarpay-sdk/shared` (`workspace:*`) — `submitViaChannels` (`packages/shared/src/channels.ts:22`,
   re-exported at `packages/shared/src/index.ts:7`).
 - `tsx` (^4.19.0) — runtime dependency, same no-build-step rationale as every example above.
 - Both already-root devDependencies before this task; no new external package.
@@ -1195,7 +1195,7 @@ TS surface consumed by later tasks:
   `:4601` with `DASHBOARD_URL`/`INGEST_SECRET` pointing at it, curl the free routes, curl a
   paid route bare to see the `402`, then drive both paid routes through
   `createPayingFetch({ secret, network: "stellar:testnet", rpcUrl })` from
-  `@stellarpay/client` (the pattern in `scripts/smoke.ts:283-293`) and read the dashboard's
+  `@stellarpay-sdk/client` (the pattern in `scripts/smoke.ts:283-293`) and read the dashboard's
   `/events` stream to confirm both receipts arrived.
 - `examples/hono-api/test/whales.test.ts` — `extractWhales` via four cases: mixed native
   and non-native/wrong-type records sorted descending and capped to `limit` (no size floor,
@@ -1246,7 +1246,7 @@ TS surface consumed by later tasks:
   both required, and responses come back SSE-framed as `event: message\ndata: {…}` even for a
   single JSON-RPC reply); call a priced tool bare to see the `-32042` challenge; then drive the
   paid calls through `wrapPaidMcpClient(client, { secret, network: "stellar:testnet", rpcUrl })`
-  over `payingHttpTransport("http://localhost:4604/mcp", fetch)` from `@stellarpay/mcp` and read
+  over `payingHttpTransport("http://localhost:4604/mcp", fetch)` from `@stellarpay-sdk/mcp` and read
   the dashboard's `/events` stream to confirm the receipts arrived.
 - `examples/agent/test/run.test.ts` — 15 tests in three groups, all offline. **`runMission`**
   (4, the brief's TDD set): the Claude path is used and the scripted tour is never touched

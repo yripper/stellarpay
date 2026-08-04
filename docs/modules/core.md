@@ -1,4 +1,4 @@
-# @stellarpay/core — Config, Router, Scheme Modules, and the `stellarpay()` Orchestrator
+# @stellarpay-sdk/core — Config, Router, Scheme Modules, and the `stellarpay()` Orchestrator
 
 ## Purpose
 
@@ -20,7 +20,7 @@ internals or unhandled rejections for the host app.
 - `src/stellarpay.ts` — `stellarpay()`: ties config + router + scheme modules into the public API.
 - `src/internal/price.ts` — `dollarToDecimal`, `decimalToBaseUnits`, `InvalidPriceError`:
   price/amount conversion helpers. Moved here from the (now-unused-by-this-package) private
-  `@stellarpay/shared`, 2026-08-03 — see Dependencies below.
+  `@stellarpay-sdk/shared`, 2026-08-03 — see Dependencies below.
 - `src/internal/networks.ts` — `NETWORKS`, `NetworkPreset`: per-network URL/passphrase
   presets. Same move as `price.ts`; imports `NetworkId` from `../types.ts` rather than
   redeclaring it.
@@ -119,7 +119,7 @@ that need them import directly from `src/schemes/*.ts`.
 `decimalToBaseUnits`, `NETWORKS`, `type NetworkPreset` (from `src/internal/`, see Structure
 above) — not part of the orchestrator's own contract, but exported since `client`/`mcp` (and
 any consumer building custom price/asset logic) need them and can no longer import them from
-the private `@stellarpay/shared`.
+the private `@stellarpay-sdk/shared`.
 
 ## Key Methods (`file:line`)
 
@@ -139,14 +139,14 @@ the private `@stellarpay/shared`.
 - `zod` — config schema validation (`config.ts`).
 - `mppx`, `@stellar/mpp`, `@stellar/stellar-sdk` — MPP charge/channel schemes.
 - `@x402/core` (pinned `~2.20.0`, not `^` — a looser range risks a second, incompatible copy
-  resolving alongside `@stellarpay/client`'s own `@x402/core` dependency, breaking
+  resolving alongside `@stellarpay-sdk/client`'s own `@x402/core` dependency, breaking
   `instanceof` checks across the two installed copies), `@x402/stellar` — x402 scheme +
   facilitator client.
 
-No dependency on `@stellarpay/shared`: `NETWORKS`, `dollarToDecimal`, and `decimalToBaseUnits`
+No dependency on `@stellarpay-sdk/shared`: `NETWORKS`, `dollarToDecimal`, and `decimalToBaseUnits`
 live in this package's own `src/internal/` (see Structure above) and are re-exported as plain
 utilities from `src/index.ts` — see Public exports below. This move (part of the final fix
-wave, 2026-08-03) is what unblocks `npm install`ing this package standalone: `@stellarpay/shared`
+wave, 2026-08-03) is what unblocks `npm install`ing this package standalone: `@stellarpay-sdk/shared`
 is `"private": true` and can never be published, so a publishable package can never declare it
 as a runtime `dependency`.
 
@@ -240,7 +240,7 @@ as a runtime `dependency`.
 - `packages/core/test/config.test.ts`, `router.test.ts`, `mppCharge.test.ts`,
   `mppChannel.test.ts`, `x402.test.ts` — per-module unit tests for Tasks 4–8.
 - `packages/core/test/price.test.ts`, `networks.test.ts` — unit tests for the
-  `src/internal/` price/network utilities, moved here from `@stellarpay/shared` in the final
+  `src/internal/` price/network utilities, moved here from `@stellarpay-sdk/shared` in the final
   fix wave (2026-08-03) along with the source files themselves.
 - `config.test.ts` — `"accepts an optional facilitatorApiKey"`: `parseConfig` round-trips the
   field unchanged. Final fix wave additions: explicit-asset prices rejected on `mpp-charge`/
@@ -262,7 +262,7 @@ as a runtime `dependency`.
   set"`: both capture the mocked fetch's `init.headers` on the `/supported` call and assert
   on the `Authorization` header directly, proving `authHeadersFor` actually reaches the
   outbound request rather than just that config accepts the field.
-- Run: `pnpm --filter @stellarpay/core test` (or `pnpm test` from repo root for the full
+- Run: `pnpm --filter @stellarpay-sdk/core test` (or `pnpm test` from repo root for the full
   workspace suite).
 
 ## Confirmed Wire Shapes (live testnet smoke, 2026-08-03)
@@ -299,7 +299,7 @@ the smoke run confirms them" shapes referenced elsewhere in this doc and in `x40
   }
   ```
   Documented as **opaque-but-observed**: this is `mppx`/`@stellar/mpp`'s own header format,
-  not something `@stellarpay/core` controls or has a published schema for — `mppCharge.ts`
+  not something `@stellarpay-sdk/core` controls or has a published schema for — `mppCharge.ts`
   still stores the raw header string as-is (`receipt.raw`), unparsed and unchanged.
   **Correction (2026-08-04):** an earlier version of this doc claimed `reference` was "an
   mppx-internal challenge/payment id, not a verified on-chain tx hash" and that it was
@@ -367,7 +367,7 @@ tests) all pass unmodified.
   (`node_modules/@x402/core/dist/esm/x402Client-0g4vl2En.d.mts:60-85`) and its runtime
   implementation (`chunk-4Y6I6537.mjs`'s `createAuthHeaders()`/`getSupported()`).
 - 2026-08-03 (final fix wave): `price.ts`/`networks.ts` (+tests) moved in from
-  `@stellarpay/shared` into `src/internal/`, re-exported as plain utilities from
+  `@stellarpay-sdk/shared` into `src/internal/`, re-exported as plain utilities from
   `index.ts`; `config.ts` gained the explicit-asset/mpp-*, pubnet/mpp-*, and 64-hex
   `commitmentPublicKey` rejections (with new tests); `types.ts`'s doc comments recounted
   (`Receipt.amount`'s doc grew from 1 line to 7, the top-of-file comment shrank by 1 —
@@ -375,10 +375,10 @@ tests) all pass unmodified.
   above). `pnpm typecheck` (7/7) / `pnpm build` (7/7) / `pnpm test` (19 files, 88 tests, up
   from 80 — the ten new tests are `price.test.ts` (arriving with 10 of its own, moved
   as-is), `networks.test.ts` (2, moved as-is), and 8 new `config.test.ts` cases; net package
-  count for `pnpm test`/`pnpm build`/`pnpm typecheck` is still 7, `@stellarpay/shared` was
+  count for `pnpm test`/`pnpm build`/`pnpm typecheck` is still 7, `@stellarpay-sdk/shared` was
   already counted before this move) all pass. `pnpm pack` of `core`/`client`/`mcp`, `npm
   install` of the `core` tarball in a directory outside this workspace, and `node -e
-  "import('@stellarpay/core').then(m => console.log(typeof m.stellarpay))"` printing
+  "import('@stellarpay-sdk/core').then(m => console.log(typeof m.stellarpay))"` printing
   `"function"` were all re-verified against the moved layout — see the root fix-wave report
   for full command output.
 - 2026-08-04 (mpp-charge `txHash`): `txHashFromReceiptHeader` (`mppCharge.ts:16-39`) added
@@ -389,5 +389,5 @@ tests) all pass unmodified.
   Wire Shapes" above); two independently-captured `reference` values re-verified live against
   Horizon testnet the same day (ledgers 3952505 and 3968442). mppx's `Receipt` schema
   (`node_modules/mppx/dist/Receipt.d.ts`) read to confirm it has no payer-equivalent field, so
-  `receipt.payer` is correctly left unset for mpp-charge. `pnpm --filter @stellarpay/core test`
+  `receipt.payer` is correctly left unset for mpp-charge. `pnpm --filter @stellarpay-sdk/core test`
   passes 63/63 (was 55, +8 for `txHashFromReceiptHeader`'s test suite); `pnpm typecheck` clean.

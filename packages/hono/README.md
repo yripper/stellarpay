@@ -1,6 +1,6 @@
-# @stellarpay/hono
+# @stellarpay-sdk/hono
 
-One-line Hono middleware adapter for [`@stellarpay/core`](../core/README.md). Hono already
+One-line Hono middleware adapter for [`@stellarpay-sdk/core`](../core/README.md). Hono already
 works with web-standard `Request`/`Response`, so this adapter dispatches directly to the core
 paywall handler with no conversion layer — the thinnest of the three framework adapters, and
 the one used for the "gated in minutes" demo.
@@ -12,7 +12,7 @@ Part of the [stellarpay](../../README.md) SDK.
 Not yet published — see [PUBLISHING.md](../../PUBLISHING.md). Once published:
 
 ```sh
-npm install @stellarpay/hono @stellarpay/core hono
+npm install @stellarpay-sdk/hono @stellarpay-sdk/core hono
 # a Node runtime also needs a server adapter, e.g.:
 npm install @hono/node-server
 ```
@@ -26,7 +26,7 @@ directly on Bun/Deno/Cloudflare Workers):
 ```ts
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import { stellarpayHono } from "@stellarpay/hono";
+import { stellarpayHono } from "@stellarpay-sdk/hono";
 
 const cfg = {
   network: "stellar:testnet",

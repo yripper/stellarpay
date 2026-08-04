@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance } from "fastify";
-import { stellarpayFastify } from "@stellarpay/fastify";
-import type { StellarpayConfig } from "@stellarpay/core";
+import { stellarpayFastify } from "@stellarpay-sdk/fastify";
+import type { StellarpayConfig } from "@stellarpay-sdk/core";
 import { fetchFeeStats } from "./fees.js";
 import { createReceiptReporter } from "./reportReceipt.js";
 import type { Env } from "./env.js";

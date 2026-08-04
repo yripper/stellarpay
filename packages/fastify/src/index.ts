@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { stellarpay, type Stellarpay } from "@stellarpay/core";
+import { stellarpay, type Stellarpay } from "@stellarpay-sdk/core";
 
 /**
  * Converts a Fastify Request to a Web standard Request.
