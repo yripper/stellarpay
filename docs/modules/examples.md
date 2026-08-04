@@ -13,6 +13,11 @@ sells live Horizon-testnet data behind two paywalled routes, one per payment sch
 `examples/hono-api` is the third: a "whale alerts" API on `@stellarpay/hono` whose README's
 job is to prove the paywall is a 6-line diff onto a plain Hono app — one x402 route selling
 the 10 largest recent native-XLM payments on testnet.
+`examples/fastify-api` is the fourth: a "fee & network stats" API on `@stellarpay/fastify`,
+the spec's deliberate no-owned-logic example (spec §9) — its only logic beyond the copied,
+already-tested `reportReceipt.ts` is a single guarded Horizon `/fee_stats` mapping. Its one
+route settles over **mpp-charge**, so across the three paid services both payment schemes
+(x402 and mpp-charge) show up more than once.
 
 ## Structure
 
@@ -70,6 +75,26 @@ the 10 largest recent native-XLM payments on testnet.
 - `examples/hono-api/test/whales.test.ts` — unit tests for `extractWhales`: threshold/sort/cap
   behavior and survival of malformed records. `fetchWhales` (the network half) has no
   automated test — see the Testing section below.
+- `examples/fastify-api/src/env.ts` — `Env` type + `readEnv()`, copied per-service from
+  `examples/express-api/src/env.ts` with `required` = `["DEMO_PAYTO", "DEMO_MPP_SECRET"]`
+  (`env.ts:19`, this service's one route is mpp-charge and needs the HMAC secret) and the port
+  default `4603` (`env.ts:30`). `Env` drops `facilitatorKey`/`sponsorSecret` entirely — this
+  service never needs an x402 facilitator or gas sponsorship (`env.ts:9-15`).
+- `examples/fastify-api/src/reportReceipt.ts` — byte-for-byte copy of
+  `examples/express-api/src/reportReceipt.ts`; see that entry above.
+- `examples/fastify-api/src/fees.ts` — `fetchFeeStats(f?: typeof fetch)`, the one Horizon
+  fetcher: reads live `/fee_stats` and derives a `low`/`moderate`/`high` congestion verdict.
+  Takes an injected `fetch` defaulting to global `fetch` so it is testable without network,
+  even though this package ships no test suite (brief's explicit deliberate choice).
+- `examples/fastify-api/src/server.ts` — `buildApp(env): Promise<FastifyInstance>`, the pure
+  (but async — see Gotchas) app factory that builds the `StellarpayConfig`, `await`s
+  `app.register(stellarpayFastify, { config })` before declaring any route, and registers the
+  free index/health routes plus the one paywalled fee-stats route.
+- `examples/fastify-api/src/main.ts` — entrypoint: `readEnv()`, `await buildApp(env)`, then
+  `app.listen({ port, host: "0.0.0.0" })`.
+- No `test/` directory — spec-sanctioned (spec §9 names fastify-api the no-owned-logic
+  example); the copied `reportReceipt.ts` is already covered by Task 4's tests, and `fees.ts`'s
+  one fetcher has no automated test despite being injectable.
 
 ## Endpoints / Public Surface
 
@@ -125,6 +150,19 @@ other non-OK Horizon response (`intel.ts:15-20`).
   {"error":"horizon_unavailable"}` (`whales.ts:32`); an empty result set is a normal `200`
   with `count: 0`, not an error.
 
+`examples/fastify-api`'s HTTP surface (`examples/fastify-api/src/server.ts:21-29`):
+
+- `GET /` — free. JSON service index: name and the one route with its price/scheme/what
+  (`server.ts:21-24`).
+- `GET /healthz` — free. `200 { ok: true }` (`server.ts:25`).
+- `GET /stats/fees` — **$0.005, mpp-charge**. Live Horizon `/fee_stats`: `lastLedger`,
+  `ledgerCapacityUsage`, a derived `congestion` verdict (`low`/`moderate`/`high`/`unknown`),
+  and the raw `feeCharged`/`maxFee` percentile blocks (`fees.ts:12-22`). Paywall key:
+  `"GET /stats/fees"` — an exact key, not a wildcard, since the route has no path parameters
+  (`server.ts:15`). A Horizon non-OK response maps to `502 {"error":"horizon_unavailable"}`
+  (`fees.ts:8`); an unreachable Horizon (thrown `fetch` rejection) is instead caught by
+  Fastify's own promise handling and answered `500` — see the Gotchas entry below.
+
 TS surface consumed by later tasks:
 
 - `buildApp(deps: Deps): Hono` (`examples/dashboard/src/server.ts:18`) — `Deps` = `{
@@ -155,6 +193,12 @@ TS surface consumed by later tasks:
 - `buildApp(env: Env): Hono` (`examples/hono-api/src/server.ts:8`) — `Env` = `{ payTo: string;
   facilitatorKey?: string; dashboardUrl?: string; ingestSecret?: string; port: number }`
   (`examples/hono-api/src/env.ts:9-15`).
+- `fetchFeeStats(f?: typeof fetch): Promise<{ status: number; body: Record<string, unknown> }>`
+  (`examples/fastify-api/src/fees.ts:6`) — `f` defaults to global `fetch`.
+- `buildApp(env: Env): Promise<FastifyInstance>` (`examples/fastify-api/src/server.ts:8`) —
+  `Env` = `{ payTo: string; mppSecret: string; dashboardUrl?: string; ingestSecret?: string;
+  port: number }` (`examples/fastify-api/src/env.ts:9-15`). `async` because it `await`s
+  `app.register(stellarpayFastify, { config })` before returning.
 
 ## Key Methods (`file:line`)
 
@@ -242,6 +286,21 @@ TS surface consumed by later tasks:
   (`server.ts:19-20`). No `mppSecretKey`/`sponsorSecret`/`rpcUrl` — this service only uses the
   x402 scheme, which needs none of them (`packages/core/src/schemes/x402.ts` never reads
   `rpcUrl`).
+- `fetchFeeStats(f)` (`examples/fastify-api/src/fees.ts:6-23`) — a Horizon non-OK response
+  becomes `502 {"error":"horizon_unavailable"}` (`fees.ts:8`); otherwise the body is parsed
+  through `asRec()` and `Number(data["ledger_capacity_usage"])` drives the verdict:
+  `!Number.isFinite` → `"unknown"`, `< 0.5` → `"low"`, `< 0.8` → `"moderate"`, else `"high"`
+  (`fees.ts:10-11`). Does **not** catch a thrown `fetch` (DNS/connection failure) itself — that
+  rejection propagates to the caller; see the resilience gotcha below for why that is still
+  safe on Fastify.
+- `buildApp(env)` (`examples/fastify-api/src/server.ts:8-31`) — builds the reporter
+  (`server.ts:9`), then a `StellarpayConfig` with no explicit `rpcUrl` — `mppCharge.ts:35`
+  falls back to `NETWORKS[cfg.network].rpcUrl` when unset, so omitting it here is intentional,
+  not an oversight (`packages/core/src/schemes/mppCharge.ts:35`). `onPayment` forwards every
+  receipt to the reporter (`server.ts:16`). `await app.register(stellarpayFastify, { config })`
+  is called and awaited **before** any route registration (`server.ts:20`) — `stellarpayFastify`
+  is a `skip-override` plugin, so its `onRequest` hook gates the whole app rather than being
+  scoped to a child encapsulation context (`packages/fastify/src/index.ts:38-51,75`).
 
 ## Dependencies
 
@@ -279,6 +338,19 @@ TS surface consumed by later tasks:
 - No HTTP client dependency: Horizon and the dashboard are both reached through the platform's
   global `fetch` (`fetchWhales`'s `f` param and `reportReceipt.ts`'s `doFetch`, both
   injectable for tests).
+
+`examples/fastify-api` (`examples/fastify-api/package.json:12-16`):
+
+- `fastify` (^4, resolved `4.29.1`) — a runtime dependency here, and the declared
+  `peerDependency` of `@stellarpay/fastify` (`packages/fastify/package.json:31-33`).
+- `@stellarpay/fastify` (`workspace:*`) — `stellarpayFastify(fastify, { config })`, an async
+  plugin function registered via `app.register()` (`packages/fastify/src/index.ts:53`).
+- `@stellarpay/core` (`workspace:*`) — `StellarpayConfig` only, imported as a type
+  (`server.ts:3`).
+- `tsx` (^4.19.0) — runtime dependency, same no-build-step rationale as the other examples.
+- No HTTP client dependency: Horizon is reached through the platform's global `fetch`
+  (`fetchFeeStats`'s injectable `f` param), the dashboard through `reportReceipt.ts`'s
+  `doFetch`, same pattern as every other example service.
 
 ## Gotchas & Invariants
 
@@ -418,6 +490,43 @@ TS surface consumed by later tasks:
   half is exercised only by the manual live-verification procedure below — there is no
   `test/` coverage for the `502` mapping or the `_embedded.records` unwrap.
 
+`examples/fastify-api`:
+
+- **Live Horizon `/fee_stats` matches this service's field assumptions exactly** — the third
+  data-point (after `/assets`' mismatch and `/payments`' match) confirming Horizon endpoint
+  shapes must be checked individually, never assumed from one endpoint to the next. Confirmed
+  2026-08-04 by curling `https://horizon-testnet.stellar.org/fee_stats`: the live response
+  carries `last_ledger`, `ledger_capacity_usage` (a decimal string, e.g. `"0.09"`),
+  `fee_charged`, and `max_fee` — every field `fetchFeeStats` reads (`fees.ts:15-19`) is present
+  and correctly named. No adaptation from the brief's given code was needed.
+- **Fastify catches async-handler rejections; Express 4 does not (same finding as hono-api,
+  different mechanism).** Read `wrapThenable.js`
+  (`node_modules/.pnpm/fastify@4.29.1/node_modules/fastify/lib/wrapThenable.js:8-48`): every
+  route handler's return value is awaited through `wrapThenable`, whose rejection branch
+  (`:31-47`) calls `reply.send(err)` rather than letting the rejection propagate — Fastify's
+  default error handler then answers `500`. Confirmed empirically: a throwaway route wired
+  identically to `GET /stats/fees` but calling `fetchFeeStats(brokenFetch)` with a `fetch` that
+  throws (simulating an unreachable Horizon) returned `500
+  {"statusCode":500,"error":"Internal Server Error","message":"fetch failed"}` via
+  `app.inject()`, and a follow-up request to `/healthz` on the same instance still returned
+  `200` — the process and the server both survived. **Unlike `examples/express-api`'s `intel()`
+  adapter, `GET /stats/fees` needs no rejection-to-502 adapter** — `fetchFeeStats` deliberately
+  does not catch a thrown `fetch` itself (`fees.ts:7`, no `try/catch` around `await f(...)`),
+  and that is safe specifically because Fastify's own `wrapThenable` is the safety net. Adding
+  an adapter here would be redundant machinery, same conclusion as hono-api reached by a
+  different framework mechanism.
+- **No explicit `rpcUrl` in this service's `StellarpayConfig`, unlike express-api's mpp-charge
+  route.** `mppCharge.ts:35` (`packages/core/src/schemes/mppCharge.ts`) falls back to
+  `NETWORKS[cfg.network].rpcUrl` when `cfg.rpcUrl` is unset, so `server.ts` omitting it is a
+  valid simplification, not a gap — verified by the live paid call below actually settling.
+- **The mpp-charge receipt carries no `payer` or `txHash`**, same as express-api's `/deep-dive`
+  route (`packages/core/src/schemes/mppCharge.ts:51-54`) — the dashboard's payer/txHash columns
+  render `—` for every receipt this service reports.
+- **`rpcUrl`/`sponsorSecret`/`facilitatorApiKey` are all absent from `Env`.** This service has
+  one route on one scheme (mpp-charge, unsponsored) and needs none of them — a deliberate
+  minimal `Env` shape, matching hono-api's precedent of dropping fields a service's single
+  scheme doesn't use.
+
 ## Testing
 
 - `examples/dashboard/test/buffer.test.ts` — seq assignment/monotonicity and
@@ -475,29 +584,51 @@ TS surface consumed by later tasks:
   `/healthz`, curl `/alerts/whales` bare to see the `402`, then drive it through
   `createPayingFetch({ secret, network: "stellar:testnet", rpcUrl })` and read the dashboard's
   `/events` stream to confirm the receipt arrived.
+- `examples/fastify-api` ships **no `test/` directory and no `test` script** — spec-sanctioned
+  (spec §9 names it the no-owned-logic example): its only logic beyond the already-tested
+  copied `reportReceipt.ts` is `fetchFeeStats`, which takes an injected `fetch` (testable
+  offline in principle) but has no automated coverage on purpose. `pnpm test` from repo root is
+  unaffected either way — the root suite is scoped to `packages/*` and never touches
+  `examples/*` (see the root-suite caveat above).
+- Typecheck: `pnpm --filter @stellarpay-examples/fastify-api typecheck` (or `pnpm typecheck`
+  from repo root).
+- Live verification of `examples/fastify-api` is not covered by any automated test — same
+  testnet-funds requirement as the other two paid examples. Manual procedure: run the dashboard
+  on `:4600` and the API on `:4603` with `DASHBOARD_URL`/`INGEST_SECRET` pointing at it, curl
+  `/` and `/healthz`, curl `/stats/fees` bare to see the `402`, then drive it through
+  `createPayingFetch({ secret, network: "stellar:testnet", rpcUrl })` and read the dashboard's
+  `/events` stream to confirm the receipt arrived. The Fastify-async-rejection resilience claim
+  above is additionally checked via a throwaway `app.inject()` harness (not committed) wiring
+  the real `fetchFeeStats` export into a bare Fastify route with a throwing `fetch`.
 
 ## Verified Against
 
 - Source read and line numbers confirmed 2026-08-04 against the current working tree
   (`examples/dashboard/src/{buffer,cooldown,ingest,server,main}.ts`,
   `examples/express-api/src/{env,reportReceipt,intel,server,main}.ts`,
-  `examples/hono-api/src/{env,reportReceipt,whales,server,main}.ts`), plus the cross-package
+  `examples/hono-api/src/{env,reportReceipt,whales,server,main}.ts`,
+  `examples/fastify-api/src/{env,reportReceipt,fees,server,main}.ts`), plus the cross-package
   citations into `packages/core/src/{config,router,stellarpay,types}.ts`,
-  `packages/core/src/schemes/{mppCharge,x402}.ts`, `packages/express/src/index.ts`, and
-  `packages/hono/src/index.ts`.
-- `hono` resolved at `4.12.33`, `@hono/node-server` at `2.0.12`, `express` at `4.22.2` in
-  `node_modules` — all match the versions this doc's line citations were checked against.
+  `packages/core/src/schemes/{mppCharge,x402}.ts`, `packages/express/src/index.ts`,
+  `packages/hono/src/index.ts`, and `packages/fastify/src/index.ts`.
+- `hono` resolved at `4.12.33`, `@hono/node-server` at `2.0.12`, `express` at `4.22.2`,
+  `fastify` at `4.29.1` in `node_modules` — all match the versions this doc's line citations
+  were checked against.
 - All 21 dashboard tests pass (`buffer`: 3, `cooldown`: 1, `ingest`: 9, `server`: 8), all
   9 express-api tests pass (`reportReceipt`: 3, `intel`: 6), and both hono-api tests pass
-  (`whales`: 2); the repo-root `pnpm typecheck` (`pnpm -r typecheck`, every package plus all
-  three examples; the root itself declares no `typecheck` script) succeeds; the root `pnpm
-  test` suite (`packages/*`, 88 tests) is unaffected — `examples/*` tests run only via their
-  own per-package filter, never the root suite.
+  (`whales`: 2); `examples/fastify-api` ships no tests, by design (see Testing above). The
+  repo-root `pnpm typecheck` (`pnpm -r typecheck`, every package plus all four examples; the
+  root itself declares no `typecheck` script) succeeds; the root `pnpm test` suite
+  (`packages/*`, 88 tests) is unaffected — `examples/*` tests run only via their own
+  per-package filter, never the root suite.
 - Horizon response shapes for `/assets`, `/order_book`, `/accounts`, and
   `/accounts/{id}/payments` re-confirmed 2026-08-04 by curling live
   `horizon-testnet.stellar.org` — this is where the `balances`/`accounts` vs
   `amount`/`num_accounts` gotcha above was caught. `/payments` re-confirmed the same day: live
   native-payment records match `whales.ts`'s field assumptions exactly (no gotcha there).
+  `/fee_stats` re-confirmed the same day too: live `last_ledger`/`ledger_capacity_usage`/
+  `fee_charged`/`max_fee` match `fees.ts`'s field assumptions exactly (no gotcha there either —
+  see the fastify-api gotcha above for the full field list).
 - `examples/express-api` verified live end-to-end 2026-08-04 on Stellar testnet: free routes
   returned real Horizon data, both paid routes issued genuine `402`s (x402 →
   `payment-required` header; mpp-charge → `WWW-Authenticate: Payment … intent="charge"`,
@@ -515,3 +646,18 @@ TS surface consumed by later tasks:
   running a throwaway handler that `await fetch()`s an unreachable host: `app.request()`
   returned `500` and the process stayed alive, in contrast to `examples/express-api`'s
   Express-4 finding above.
+- `examples/fastify-api` verified live end-to-end 2026-08-04 on Stellar testnet: `GET /` and
+  `GET /healthz` returned the expected JSON, `GET /stats/fees` bare issued a genuine `402` with
+  a `WWW-Authenticate: Payment … intent="charge"` challenge header quoting `50000` base units =
+  `$0.005` USDC, and the route settled to `200` through `createPayingFetch` with a live
+  `congestion: "low"` verdict and real `feeCharged`/`maxFee` percentile blocks, with the receipt
+  (`scheme: "mpp-charge"`, `route: "GET /stats/fees"`, `amount: "0.005"`) arriving on the
+  dashboard's `/events` feed.
+- Fastify's automatic-500-on-rejection behavior confirmed both by reading
+  `node_modules/.pnpm/fastify@4.29.1/node_modules/fastify/lib/wrapThenable.js`'s rejection
+  branch (`:31-47`, which calls `reply.send(err)` instead of letting the rejection escape) and
+  by running a throwaway route wired like `GET /stats/fees` but with a `fetch` that always
+  throws: `app.inject()` returned `500 {"statusCode":500,"error":"Internal Server
+  Error","message":"fetch failed"}`, and a follow-up `/healthz` request on the same instance
+  still returned `200` — the process and the server both survived, same conclusion as Hono's
+  finding above, in contrast to `examples/express-api`'s Express-4 finding.
