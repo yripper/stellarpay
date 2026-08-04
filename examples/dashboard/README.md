@@ -10,10 +10,36 @@ Part of the [stellarpay](../../README.md) SDK's `examples/` directory. See
 [`docs/modules/examples.md`](../../docs/modules/examples.md) for the full module doc
 (endpoints, internals, gotchas).
 
+**Screenshot:** _(to be captured from a live run before the demo recording — run `pnpm dev`
+and open http://localhost:4600)_
+
+## Dashboard UI
+
+`public/index.html` is a single self-contained dark "mission control" page — no build step,
+no CDN dependencies (Railway serves the file directly, `src/main.ts:19,23-25`). It opens an
+`EventSource` on `/events` and renders each `FeedEvent` as a row in a live feed (CSS
+`column-reverse`, so the newest row appears on top without any DOM reordering): timestamp,
+paying service, a scheme badge (`x402` amber / `mpp` cyan — anything other than the literal
+string `"x402"` renders as the `mpp`-styled badge), the route or tool name, amount + asset,
+a truncated payer address (`GABC…MNOP`), and a `stellar.expert` testnet explorer link
+(`https://stellar.expert/explorer/testnet/tx/<txHash>`) when the receipt carries a `txHash`.
+`agent-log` events render as an italic narration line instead of a receipt row. A header
+strip tracks running totals (payment count, summed USDC volume). The receipt payload is
+untrusted and opaque (`examples/dashboard/src/buffer.ts:9`), so every field is read
+defensively and missing/non-string values render as `—`; every interpolated value is passed
+through an `esc()` helper before being written into `innerHTML`.
+
+The "▶ UNLEASH THE AGENT" button POSTs `/unleash` and reflects the real response: `202`
+starts a visible 120s cooldown countdown on the button, `429` reads `retryAfterSeconds` from
+the body and counts down from that instead, and `503` (no `AGENT_URL` configured) re-enables
+the button immediately with an "Agent unavailable right now." message. The SSE connection
+uses the browser's native `EventSource`, which auto-reconnects on its own if the stream
+drops — no custom reconnect logic needed.
+
 ## Endpoints
 
 - `GET /healthz` — `200 { ok: true }`.
-- `GET /` — serves `public/index.html` (placeholder until the dashboard UI task lands).
+- `GET /` — serves `public/index.html`, the mission-control dashboard UI (see below).
 - `POST /ingest` — header `Authorization: Bearer <INGEST_SECRET>`; JSON body
   `{ service, kind: "receipt", receipt: object }` or
   `{ service, kind: "agent-log", message: string }`. `401` bad/missing auth, `400` malformed

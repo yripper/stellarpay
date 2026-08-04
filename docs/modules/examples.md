@@ -22,8 +22,13 @@ endpoint, and it fans them out to browsers over Server-Sent Events (SSE).
 - `examples/dashboard/src/main.ts` — entrypoint: loads `.env`, reads `INGEST_SECRET`/
   `AGENT_URL`/`PORT`, reads `public/index.html`, and binds `buildApp()`'s `Hono` instance to
   a socket via `@hono/node-server`'s `serve()`.
-- `examples/dashboard/public/index.html` — served at `GET /`; placeholder until Task 3 ships
-  the real dashboard UI.
+- `examples/dashboard/public/index.html` — served at `GET /`; the real dashboard UI (dark
+  "mission control" theme). Self-contained: inline `<style>`/`<script>`, no build step, no
+  CDN dependency. Opens an `EventSource` on `/events` and renders each `FeedEvent` as a feed
+  row (or an italic narration line for `kind: "agent-log"`); drives the "▶ UNLEASH THE AGENT"
+  button against `/unleash`, including its 202/429/503 states and cooldown countdown. See
+  `examples/dashboard/README.md`'s "Dashboard UI" section for the full field-by-field
+  breakdown.
 - `examples/dashboard/test/{buffer,cooldown,ingest,server}.test.ts` — unit tests for the
   three pure modules plus HTTP-level tests against `buildApp()` via Hono's `app.request()`
   (no socket).
@@ -126,6 +131,17 @@ TS surface consumed by later tasks:
 - **`html` is required and injected, not read from disk inside `buildApp()`.** `main.ts`
   reads `public/index.html` and passes its contents in; this keeps `buildApp()` a pure,
   filesystem-free factory that tests can call directly.
+- **The dashboard UI treats every receipt field as untrusted and optional.** `receipt` is
+  `Record<string, unknown>` end-to-end (`buffer.ts:9`, never validated beyond "is it an
+  object" in `ingest.ts:13`); `public/index.html`'s client JS only trusts a field if
+  `typeof value === "string" && value !== ""`, otherwise renders `—`. Every interpolated
+  value goes through an `esc()` helper before landing in `innerHTML` — there is no other XSS
+  guard, so a future change that skips `esc()` on a new field is a real vulnerability, not
+  just a style nit.
+- **The `x402`/`mpp` badge split is a string-equality check, not an enum.** Any `scheme`
+  value other than the exact string `"x402"` (including `undefined` → `"—"`) renders with
+  the `mpp`-styled badge class. A future third scheme would silently render as `mpp`-colored
+  unless this ternary is revisited.
 
 ## Testing
 
@@ -157,7 +173,7 @@ TS surface consumed by later tasks:
   (`examples/dashboard/src/{buffer,cooldown,ingest,server,main}.ts`).
 - `hono` resolved at `4.12.33`, `@hono/node-server` at `2.0.12` in `node_modules` — both
   match the versions this doc's line citations were checked against.
-- All 20 dashboard tests pass (`buffer`: 2, `cooldown`: 1, `ingest`: 9, `server`: 8);
+- All 21 dashboard tests pass (`buffer`: 3, `cooldown`: 1, `ingest`: 9, `server`: 8);
   `pnpm --filter @stellarpay-examples/dashboard typecheck` and the repo-root `pnpm
   typecheck` (`pnpm -r typecheck`, 9 packages incl. `examples/dashboard`) both succeed; the
   root `pnpm test` suite (`packages/*`, 88 tests) is unaffected.
