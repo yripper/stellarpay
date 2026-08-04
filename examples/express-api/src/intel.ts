@@ -25,10 +25,14 @@ function assetRecord(data: Rec): Rec | undefined {
 }
 
 /**
- * Circulating supply of an asset record. Horizon 2.x reports it as `balances.authorized`;
- * the flat `amount` field is the pre-2.x name and is read first only so older/simplified
- * payloads still resolve. Confirmed live: `/assets` records carry `balances`/`accounts`
- * objects, not `amount`/`num_accounts`.
+ * Authorized supply of an asset record — `balances.authorized` only (Horizon 2.x), or the
+ * pre-2.x flat `amount` field when present. Deliberately **not** total circulating supply:
+ * a live `/assets` record also carries `balances.unauthorized` plus three sibling top-level
+ * amounts this function never reads — `claimable_balances_amount`, `liquidity_pools_amount`,
+ * `contracts_amount` (confirmed live, `horizon-testnet.stellar.org/assets?asset_code=USDC`,
+ * 2026-08-04) — none of which are summed in here. Labeling this partial figure plain `supply`
+ * on a paid route would promise a total it doesn't deliver; the field this feeds is named
+ * `authorizedSupply` for exactly that reason (see the route body below).
  */
 function assetSupply(rec: Rec): string {
   return str(rec["amount"]) ?? str(asRec(rec["balances"])["authorized"]) ?? "—";
@@ -50,7 +54,7 @@ export async function fetchAssetSummary(code: string, issuer: string, f: typeof 
     body: {
       code,
       issuer,
-      supply: assetSupply(rec),
+      authorizedSupply: assetSupply(rec),
       holders: assetHolders(rec),
       flags: asRec(rec["flags"]),
       source: "horizon-testnet, live",

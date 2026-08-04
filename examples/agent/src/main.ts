@@ -13,7 +13,23 @@ import { buildApp } from "./server.js";
 
 const env = readEnv();
 const narrate = createNarrator({ dashboardUrl: env.dashboardUrl, ingestSecret: env.ingestSecret });
-const buyerPublicKey = Keypair.fromSecret(env.buyerSecret).publicKey();
+
+/**
+ * Parses DEMO_BUYER_SECRET behind a guarded path, same posture as readEnv()'s presence
+ * check: on a malformed secret (wrong length, bad checksum, not S...), name the offending
+ * var and exit 1 — never let @stellar/stellar-sdk's bare "invalid encoded string" crash-loop
+ * the service with no indication of which env var to fix. Never logs the value itself.
+ */
+function readBuyerKeypair(secret: string): Keypair {
+  try {
+    return Keypair.fromSecret(secret);
+  } catch {
+    console.error("DEMO_BUYER_SECRET is not a valid Stellar secret key — check the value in your env and try again.");
+    process.exit(1);
+  }
+}
+
+const buyerPublicKey = readBuyerKeypair(env.buyerSecret).publicKey();
 const rpcUrl = NETWORKS["stellar:testnet"].rpcUrl;
 
 const LIMITS = { maxPerCall: "$0.05", maxTotal: "$0.25" } as const; // per run — load-bearing demo copy (spec §4.6)

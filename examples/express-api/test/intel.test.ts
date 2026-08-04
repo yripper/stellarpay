@@ -22,14 +22,14 @@ describe("intel fetchers", () => {
     const f = vi.fn().mockResolvedValue(json({ _embedded: { records: [ASSET_RECORD] } }));
     const out = await fetchAssetSummary("USDC", "GISSUER", f as unknown as typeof fetch);
     expect(out.status).toBe(200);
-    expect(out.body).toMatchObject({ code: "USDC", issuer: "GISSUER", supply: "1000.5", holders: 42 });
+    expect(out.body).toMatchObject({ code: "USDC", issuer: "GISSUER", authorizedSupply: "1000.5", holders: 42 });
   });
 
-  it("summary reads supply/holders from the live Horizon 2.x balances+accounts shape", async () => {
+  it("summary reads authorizedSupply/holders from the live Horizon 2.x balances+accounts shape", async () => {
     const f = vi.fn().mockResolvedValue(json({ _embedded: { records: [LIVE_ASSET_RECORD] } }));
     const out = await fetchAssetSummary("USDC", "GISSUER", f as unknown as typeof fetch);
     expect(out.status).toBe(200);
-    expect(out.body).toMatchObject({ supply: "18501850000.0000000", holders: 2 });
+    expect(out.body).toMatchObject({ authorizedSupply: "18501850000.0000000", holders: 2 });
   });
 
   it("summary maps an empty record set to 404", async () => {

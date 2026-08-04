@@ -68,7 +68,7 @@ export function buildApp(env: Env): Express {
       name: "Stellar Intel — express-api",
       network: "stellar:testnet",
       routes: {
-        "GET /summary/:code/:issuer": { price: "free", what: "asset teaser: supply, holders, flags" },
+        "GET /summary/:code/:issuer": { price: "free", what: "asset teaser: authorized supply, holders, flags" },
         "GET /report/:code/:issuer": { price: PRICES.report, scheme: "x402", what: "full asset report + live order-book" },
         "GET /deep-dive/:account": { price: PRICES.deepDive, scheme: "mpp-charge", what: "balances, flags, recent payments" },
       },

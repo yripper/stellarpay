@@ -67,7 +67,7 @@ function describeIntel(intel: unknown, describe: (r: Rec) => string): string {
   return describe(r);
 }
 
-/** e.g. "USDC supply 99950.0000000 held by 2 accounts; no live XLM order book". */
+/** e.g. "USDC authorized supply 99950.0000000 held by 2 accounts; no live XLM order book". */
 export function summarizeAssetReport(intel: unknown): string {
   return describeIntel(intel, (r) => {
     const market = asRec(r["market"]);
@@ -75,7 +75,10 @@ export function summarizeAssetReport(intel: unknown): string {
     const ask = str(market["bestAskXlm"]);
     const quoted = bid !== undefined || ask !== undefined;
     const book = quoted ? `XLM book ${bid ?? "—"} bid / ${ask ?? "—"} ask` : "no live XLM order book";
-    return `${shown(r["code"])} supply ${shown(r["supply"])} held by ${shown(r["holders"])} accounts; ${book}`;
+    // "authorized supply", not "supply" — express-api's /report route only ever reports
+    // balances.authorized (examples/express-api/src/intel.ts's assetSupply), so the narration
+    // must not claim more than the field actually is.
+    return `${shown(r["code"])} authorized supply ${shown(r["authorizedSupply"])} held by ${shown(r["holders"])} accounts; ${book}`;
   });
 }
 
@@ -209,13 +212,29 @@ export function buildEconomy(deps: {
   ];
 }
 
+/**
+ * True when `intel` is what {@link describeIntel} would report as an error rather than data —
+ * a bare string (an MCP `isError` result unwrapped by {@link unwrapMcpIntel}) or a JSON
+ * payload carrying an `error` field. In both cases the payment already settled; only the
+ * seller's delivery failed, and the narration marker should say so instead of claiming a
+ * clean success.
+ */
+function isFailedDelivery(intel: unknown): boolean {
+  if (typeof intel === "string") return true;
+  return typeof asRec(intel)["error"] === "string";
+}
+
 /** Deterministic tour: every buyable in the economy, in order, narrated. Never throws per-item. */
 export async function scriptedTour(economy: Buyable[], narrate: Narrator): Promise<void> {
   for (const item of economy) {
     narrate(`Buying ${item.name} from ${item.service} for ${item.price}…`);
     try {
       const intel = await item.buy();
-      narrate(`✔ Paid ${item.price} to ${item.service} for ${item.name} — ${item.summarize(intel)}`);
+      // ✔ means "paid and delivered"; a seller error after a successful payment is neither
+      // a failed purchase (✖, which describeBuyFailure/the catch below reserve for that) nor
+      // a clean success — ⚠ marks that distinction instead of reading as broken on camera.
+      const marker = isFailedDelivery(intel) ? "⚠" : "✔";
+      narrate(`${marker} Paid ${item.price} to ${item.service} for ${item.name} — ${item.summarize(intel)}`);
     } catch (err) {
       narrate(`✖ ${item.name} not delivered — ${describeBuyFailure(err)}`);
     }

@@ -86,6 +86,26 @@ describe("scriptedTour", () => {
     expect(lines).toContain("✖ broken not delivered — seller down");
     expect(bought).toEqual(["working"]);
   });
+
+  it("marks a settled payment whose seller answered with an error as ⚠, not ✔", async () => {
+    const lines: string[] = [];
+    await scriptedTour(
+      [
+        // A bare-string intel is what unwrapMcpIntel returns for an MCP isError result — the
+        // payment settled (buy() resolved, no throw), but describeIntel reads it as an error.
+        buyable("mcp_tool", async () => "fetch failed"),
+      ],
+      (m) => lines.push(m),
+    );
+    expect(lines[1]).toBe('⚠ Paid $0.01 to test-service for mcp_tool — saw "fetch failed"');
+    expect(lines[1]).not.toContain("✔");
+  });
+
+  it("marks a settled payment whose JSON body carries an error field as ⚠, not ✔", async () => {
+    const lines: string[] = [];
+    await scriptedTour([buyable("http_route", async () => ({ error: "horizon_unavailable" }))], (m) => lines.push(m));
+    expect(lines[1]).toBe('⚠ Paid $0.01 to test-service for http_route — saw {"error":"horizon_unavailable"}');
+  });
 });
 
 describe("purchase summaries", () => {
@@ -93,16 +113,16 @@ describe("purchase summaries", () => {
     expect(
       summarizeAssetReport({
         code: "USDC",
-        supply: "99950.0000000",
+        authorizedSupply: "99950.0000000",
         holders: 2,
         market: { bestBidXlm: "0.1", bestAskXlm: null },
       }),
-    ).toBe("USDC supply 99950.0000000 held by 2 accounts; XLM book 0.1 bid / — ask");
+    ).toBe("USDC authorized supply 99950.0000000 held by 2 accounts; XLM book 0.1 bid / — ask");
   });
 
   it("says so plainly when the order book is missing rather than inventing a price", () => {
-    expect(summarizeAssetReport({ code: "USDC", supply: "1.0", holders: null, market: { note: "order book unavailable" } })).toBe(
-      "USDC supply 1.0 held by — accounts; no live XLM order book",
+    expect(summarizeAssetReport({ code: "USDC", authorizedSupply: "1.0", holders: null, market: { note: "order book unavailable" } })).toBe(
+      "USDC authorized supply 1.0 held by — accounts; no live XLM order book",
     );
   });
 

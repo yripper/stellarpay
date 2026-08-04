@@ -3,6 +3,22 @@ import { describeBuyFailure, type Buyable } from "./economy.js";
 import type { Narrator } from "./narrate.js";
 
 const MAX_TURNS = 8;
+const MAX_BRIEF_LENGTH = 400;
+
+/**
+ * Truncates the closing brief to at most `maxLen` characters, breaking on the last word
+ * boundary rather than mid-word, and appending an ellipsis when it truncates. A bare
+ * `.slice(0, N)` can cut a word — and, since this is the demo's centerpiece closing line on
+ * camera, the whole sentence — in half with no indication anything was cut. Pure; unit-tested
+ * directly (`test/claude.test.ts`).
+ */
+export function truncateBrief(text: string, maxLen: number = MAX_BRIEF_LENGTH): string {
+  if (text.length <= maxLen) return text;
+  const cut = text.slice(0, maxLen);
+  const lastSpace = cut.lastIndexOf(" ");
+  const boundary = lastSpace > 0 ? cut.slice(0, lastSpace) : cut;
+  return `${boundary}…`;
+}
 
 /**
  * Mission-driven buying loop: Claude picks which intel to buy via tool use. Each Buyable
@@ -56,7 +72,7 @@ export async function runClaudeMission(opts: {
         .filter((b): b is Anthropic.TextBlock => b.type === "text")
         .map((b) => b.text)
         .join(" ");
-      opts.narrate(`Brief: ${finalText.slice(0, 400) || "(no text returned)"}`);
+      opts.narrate(`Brief: ${finalText ? truncateBrief(finalText) : "(no text returned)"}`);
       return;
     }
 
